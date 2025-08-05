@@ -1,5 +1,4 @@
 [build]
-  command = "apt-get update && apt-get install -y build-essential libatlas-base-dev gfortran && pip install -r requirements.txt"
   functions = "functions"
   publish = "static"
 
