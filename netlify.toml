@@ -1,4 +1,5 @@
 [build]
+  dockerfile = "Dockerfile"
   functions = "functions"
   publish = "static"
 
