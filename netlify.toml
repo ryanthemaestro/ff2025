@@ -4,7 +4,7 @@
   publish = "static"
 
 [build.environment]
-  PYTHON_VERSION = "3.10"
+  PYTHON_VERSION = "3.8"
 
 [[redirects]]
   from = "/api/*"
