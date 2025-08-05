@@ -1,13 +1,13 @@
 Flask==3.0.3
-pandas==2.2.2
-numpy==1.26.4
-requests==2.32.3
-scikit-learn==1.5.1
+pandas==2.0.3  // Downgrade for 3.8 compat
+numpy==1.24.4  // Stable for 3.8
+requests==2.31.0
+scikit-learn==1.3.2  // Compatible
 catboost==1.2.5
-joblib==1.4.2
-nfl-data-py==0.3.3
+joblib==1.3.2
+nfl-data-py==0.3.1  // Adjust if needed
 beautifulsoup4==4.12.3
-lxml==5.2.2
-matplotlib==3.9.1
-plotly==5.22.0
-gunicorn==22.0.0  // For production WSGI server 
+lxml==4.9.4
+matplotlib==3.7.5
+plotly==5.18.0
+gunicorn==21.2.0  // For production WSGI server 
