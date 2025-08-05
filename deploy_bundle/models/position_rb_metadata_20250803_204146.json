@@ -1,0 +1,18 @@
+{
+  "position": "RB",
+  "features": [
+    "weighted_historical_avg",
+    "consistency_score",
+    "performance_trend",
+    "seasons_played",
+    "total_career_points",
+    "games_played",
+    "carries",
+    "targets"
+  ],
+  "train_r2": 0.9999901038118926,
+  "test_r2": 0.9431410705476886,
+  "test_mae": 9.296094365910053,
+  "training_samples": 100,
+  "timestamp": "20250803_204146"
+}

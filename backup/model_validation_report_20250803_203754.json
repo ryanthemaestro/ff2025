@@ -1,0 +1,42 @@
+{
+  "strategy_results": {
+    "QB": {
+      "our_top_10_avg": 6.9700005,
+      "position_average": 83.97829059316238,
+      "outperformance": -77.00829009316239,
+      "outperformance_pct": -91.70023532180886,
+      "sample_size": 2
+    },
+    "WR": {
+      "our_top_10_avg": 66.4,
+      "position_average": 88.17247464671716,
+      "outperformance": -21.772474646717157,
+      "outperformance_pct": -24.69305158322194,
+      "sample_size": 2
+    },
+    "TE": {
+      "our_top_10_avg": 26.525,
+      "position_average": 56.81199995945945,
+      "outperformance": -30.28699995945945,
+      "outperformance_pct": -53.3109201948039,
+      "sample_size": 4
+    }
+  },
+  "consensus_results": {
+    "adp_top_50_avg": 45.875,
+    "model_top_50_avg": 44.39545454545455,
+    "difference": -1.4795454545454518,
+    "difference_pct": -3.2251672033688323,
+    "adp_sample_size": 16,
+    "model_sample_size": 22
+  },
+  "consistency_results": {},
+  "bust_results": {
+    "WR": {
+      "busts": 1,
+      "total_matched": 2,
+      "bust_rate_pct": 50.0
+    }
+  },
+  "overall_grade": "D"
+}

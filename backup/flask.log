@@ -1,0 +1,10 @@
+[3500047:0805/080437.931455:ERROR:angle_platform_impl.cc(44)] Display.cpp:1056 (initialize): ANGLE Display::initialize error 12289: Invalid visual ID requested.
+ERR: Display.cpp:1056 (initialize): ANGLE Display::initialize error 12289: Invalid visual ID requested.
+[3500047:0805/080437.934248:ERROR:gl_display.cc(493)] EGL Driver message (Critical) eglInitialize: Invalid visual ID requested.
+[3500047:0805/080437.934322:ERROR:gl_display.cc(762)] eglInitialize OpenGL failed with error EGL_NOT_INITIALIZED, trying next display type
+[3500047:0805/080437.934773:ERROR:angle_platform_impl.cc(44)] Display.cpp:1056 (initialize): ANGLE Display::initialize error 12289: Invalid visual ID requested.
+ERR: Display.cpp:1056 (initialize): ANGLE Display::initialize error 12289: Invalid visual ID requested.
+[3500047:0805/080437.934810:ERROR:gl_display.cc(493)] EGL Driver message (Critical) eglInitialize: Invalid visual ID requested.
+[3500047:0805/080437.934835:ERROR:gl_display.cc(762)] eglInitialize OpenGLES failed with error EGL_NOT_INITIALIZED
+[3500047:0805/080437.934860:ERROR:gl_display.cc(796)] Initialization of all EGL display types failed.
+[3500047:0805/080437.934902:ERROR:gl_ozone_egl.cc(26)] GLDisplayEGL::Initialize failed.

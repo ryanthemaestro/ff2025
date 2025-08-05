@@ -1,0 +1,17 @@
+{
+  "position": "TE",
+  "features": [
+    "weighted_historical_avg",
+    "consistency_score",
+    "performance_trend",
+    "seasons_played",
+    "total_career_points",
+    "games_played",
+    "targets"
+  ],
+  "train_r2": 0.9999789752545467,
+  "test_r2": 0.9919025172013858,
+  "test_mae": 4.390735046621186,
+  "training_samples": 90,
+  "timestamp": "20250803_204146"
+}

@@ -1,0 +1,27 @@
+🏈 Loading FantasyPros ADP Rankings...
+✅ Loaded 858 players from FantasyPros ADP Rankings
+   Positions: {'WR': 283, 'RB': 203, 'TE': 150, 'QB': 124, 'K': 60, 'DST': 32, 'LB': 2, 'DT': 1, 'CB': 1}
+🆕 Loading FantasyPros Rookie Rankings...
+✅ Loaded 127 rookies from FantasyPros Rookie Rankings
+   Rookie Positions: {'WR': 57, 'RB': 32, 'TE': 23, 'QB': 15}
+🏥 Adding injury status to player data...
+📊 Loading nfl_data_py library...
+📊 Fetching 2025 NFL injury data from nflverse...
+❌ Failed to get 2025 data: HTTP Error 404: Not Found
+📊 Fetching 2024 NFL injury data from nflverse...
+✅ Successfully loaded 6215 injury records from nflverse for 2024
+🔍 Matching 858 players against 6215 injury records...
+✅ Found injury status for 174 players
+🔍 Matching 127 players against 6215 injury records...
+✅ Found injury status for 0 players
+✅ Injury status added to all players
+ * Serving Flask app 'draft_ui'
+ * Debug mode: on
+[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
+ * Running on all addresses (0.0.0.0)
+ * Running on http://127.0.0.1:5000
+ * Running on http://192.168.1.169:5000
+[33mPress CTRL+C to quit[0m
+ * Restarting with stat
+ * Debugger is active!
+ * Debugger PIN: 113-522-762
