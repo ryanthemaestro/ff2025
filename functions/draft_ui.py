@@ -502,13 +502,13 @@ def draft():
         # Find player in either main df or rookie_df
         player_data = None
         
-        # Check main df first
-        player_matches = df[df['name'] == player_name]
+        # Check main df first (case-insensitive)
+        player_matches = df[df['name'].str.lower() == player_name.lower()]
         if not player_matches.empty:
             player_data = player_matches.iloc[0].to_dict()
         else:
-            # Check rookie df
-            rookie_matches = rookie_df[rookie_df['name'] == player_name]
+            # Check rookie df (case-insensitive)
+            rookie_matches = rookie_df[rookie_df['name'].str.lower() == player_name.lower()]
             if not rookie_matches.empty:
                 player_data = rookie_matches.iloc[0].to_dict()
         
@@ -576,11 +576,11 @@ def mark_taken():
         
         # Find player data
         player_data = None
-        player_matches = df[df['name'] == player_name]
+        player_matches = df[df['name'].str.lower() == player_name.lower()]
         if not player_matches.empty:
             player_data = player_matches.iloc[0].to_dict()
         else:
-            rookie_matches = rookie_df[rookie_df['name'] == player_name]
+            rookie_matches = rookie_df[rookie_df['name'].str.lower() == player_name.lower()]
             if not rookie_matches.empty:
                 player_data = rookie_matches.iloc[0].to_dict()
         

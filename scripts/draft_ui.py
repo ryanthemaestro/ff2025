@@ -536,8 +536,8 @@ def draft():
         
         available_df, our_team, drafted_by_others, team_needs = load_state()
         
-        # Find the player
-        player_row = available_df[available_df['name'] == player_name]
+        # Find the player (case-insensitive)
+        player_row = available_df[available_df['name'].str.lower() == player_name.lower()]
         if player_row.empty:
             return jsonify({'success': False, 'message': 'Player not found'})
         
@@ -583,8 +583,8 @@ def mark_taken():
         
         available_df, our_team, drafted_by_others, team_needs = load_state()
         
-        # Find the player
-        player_row = available_df[available_df['name'] == player_name]
+        # Find the player (case-insensitive)
+        player_row = available_df[available_df['name'].str.lower() == player_name.lower()]
         if player_row.empty:
             return jsonify({'success': False, 'message': 'Player not found'})
         
