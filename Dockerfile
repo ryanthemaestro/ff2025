@@ -30,5 +30,5 @@ RUN pip install --upgrade pip && \
 # Copy the rest of the code
 COPY . /app/
 
-# Default command with debug logging
-CMD ["gunicorn", "functions.api:app", "--bind", "0.0.0.0:$PORT", "--workers", "1", "--timeout", "300", "--log-level", "debug"] 
+# Default command with shell expansion for PORT (defaults to 8000)
+CMD ["sh", "-c", "gunicorn functions.api:app --bind 0.0.0.0:${PORT:-8000} --workers 1 --timeout 300 --log-level debug"] 
