@@ -27,5 +27,5 @@ RUN pip install --upgrade pip && \
 # Copy the rest of the code
 COPY . /app/
 
-# Default command (can be overridden by Netlify)
-CMD ["gunicorn", "functions.api:app", "--bind", "0.0.0.0:$PORT", "--port", "8000"] 
+# Default command (use dynamic $PORT for platforms like Render/Railway)
+CMD ["gunicorn", "functions.api:app", "--bind", "0.0.0.0:$PORT"] 
