@@ -405,7 +405,7 @@ def suggest():
         
         # Format for frontend
         formatted_suggestions = []
-        for _, suggestion in enhanced_suggestions.head(10).iterrows():  # Top 10 picks
+        for _, suggestion in enhanced_suggestions.head(8).iterrows():  # Top 8 picks
             # Use boosted score as the optimized score
             boosted_score = suggestion.get('boosted_score', suggestion.get('projected_points', 0))
             scarcity_boost = suggestion.get('scarcity_boost', 1.0)
