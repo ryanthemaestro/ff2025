@@ -28,4 +28,4 @@ RUN pip install --upgrade pip && \
 COPY . /app/
 
 # Default command (can be overridden by Netlify)
-CMD ["gunicorn", "functions.api:app", "--bind", "0.0.0.0:8000"] 
+CMD ["gunicorn", "functions.api:app", "--bind", "0.0.0.0:$PORT", "--port", "8000"] 
