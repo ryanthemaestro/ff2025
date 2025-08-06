@@ -88,6 +88,28 @@ class ProperTrainingDataCreator:
                 'recent_avg_fantasy_points': historical_games['fantasy_points'].tail(3).mean(),
                 'recent_vs_season_trend': historical_games['fantasy_points'].tail(3).mean() - historical_games['fantasy_points'].mean(),
                 
+                # Recency-weighted average fantasy points
+                if len(historical_games) > 0:
+                    seasons = historical_games['season'].unique()
+                    if len(seasons) > 0:
+                        seasons_sorted = sorted(seasons, reverse=True)  # Most recent first
+                        weights = [0.5, 0.3, 0.2][:len(seasons_sorted)]  # Weights for up to 3 seasons
+                        weights += [0.1] * (len(seasons_sorted) - len(weights))  # Fallback for more
+                        weighted_sum = 0
+                        total_weight = 0
+                        for season, weight in zip(seasons_sorted, weights):
+                            season_data = historical_games[historical_games['season'] == season]
+                            season_avg = season_data['fantasy_points'].mean()
+                            weighted_sum += season_avg * weight * len(season_data)
+                            total_weight += weight * len(season_data)
+                        weighted_avg = weighted_sum / total_weight if total_weight > 0 else 0
+                    else:
+                        weighted_avg = historical_games['fantasy_points'].mean()
+                else:
+                    weighted_avg = 0
+                
+                features['weighted_avg_fantasy_points'] = weighted_avg
+
                 # Target: actual fantasy points in the current game (what we want to predict)
                 'target_fantasy_points': target_game['fantasy_points']
             }
