@@ -89,6 +89,7 @@ class ProperTrainingDataCreator:
                 'recent_vs_season_trend': historical_games['fantasy_points'].tail(3).mean() - historical_games['fantasy_points'].mean(),
                 
                 # Recency-weighted average fantasy points
+                weighted_avg = 0
                 if len(historical_games) > 0:
                     seasons = historical_games['season'].unique()
                     if len(seasons) > 0:
@@ -105,8 +106,6 @@ class ProperTrainingDataCreator:
                         weighted_avg = weighted_sum / total_weight if total_weight > 0 else 0
                     else:
                         weighted_avg = historical_games['fantasy_points'].mean()
-                else:
-                    weighted_avg = 0
                 
                 features['weighted_avg_fantasy_points'] = weighted_avg
 
