@@ -348,13 +348,21 @@ def suggest():
                 have_count = position_counts.get(pos, 0)
                 target_count = position_targets.get(pos, 1)
                 
-                # Boost if we need more of this position
+                # Tune boosts: stronger for RB/WR, weaker for QB
                 if have_count < target_count:
-                    # Higher boost for urgent needs
-                    scarcity_boost = 1.5 if have_count == 0 else 1.2
+                    if pos in ['RB', 'WR']:
+                        scarcity_boost = 2.0 if have_count == 0 else 1.5  # Increased
+                    elif pos == 'QB':
+                        scarcity_boost = 1.0 if have_count == 0 else 0.8  # Decreased
+                    else:
+                        scarcity_boost = 1.5 if have_count == 0 else 1.2
                 else:
-                    scarcity_boost = 0.8  # Lower priority if we have enough
+                    scarcity_boost = 0.7  # Slightly lowered
                 
+                # Early-draft QB penalty (rounds 1-3)
+                if round_num <= 3 and pos == 'QB':
+                    scarcity_boost *= 0.7
+
                 scarcity_boosts.append(scarcity_boost)
             
             boosted_df['scarcity_boost'] = scarcity_boosts
@@ -423,6 +431,14 @@ def suggest():
                 'scarcity_boost': round(float(scarcity_boost), 2) if not pd.isna(scarcity_boost) else 1.0
             })
         
+        # Replacement levels (for 12-team league; adjust as needed)
+        replacement_levels = {'QB': 250, 'RB': 150, 'WR': 140, 'TE': 100, 'K': 90, 'DST': 80}
+        
+        enhanced_suggestions['vorp'] = enhanced_suggestions['boosted_score'] - enhanced_suggestions['position'].map(replacement_levels).fillna(0)
+        
+        # Sort by VORP
+        enhanced_suggestions = enhanced_suggestions.sort_values('vorp', ascending=False)
+
         return jsonify(formatted_suggestions)
         
     except Exception as e:
