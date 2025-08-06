@@ -9,6 +9,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'scripts'))
 # Import the Flask app from our draft_ui module
 from draft_ui import app
 
+print("Starting Flask app...")
+print(f"PORT from env: {os.environ.get('PORT', '8000')}")
+print("App imported successfully")
+
 def handler(event, context):
     """
     AWS Lambda handler function for Netlify Functions
