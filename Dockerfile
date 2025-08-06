@@ -17,6 +17,9 @@ RUN apt-get update && \
 # Set work directory
 WORKDIR /app
 
+# Set fallback PORT
+ENV PORT 8000
+
 # Copy requirements
 COPY requirements.txt /app/
 
@@ -27,5 +30,5 @@ RUN pip install --upgrade pip && \
 # Copy the rest of the code
 COPY . /app/
 
-# Default command (use dynamic $PORT for platforms like Render/Railway)
-CMD ["gunicorn", "functions.api:app", "--bind", "0.0.0.0:$PORT"] 
+# Default command with debug logging
+CMD ["gunicorn", "functions.api:app", "--bind", "0.0.0.0:$PORT", "--workers", "1", "--timeout", "300", "--log-level", "debug"] 
