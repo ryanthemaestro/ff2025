@@ -125,10 +125,10 @@ class ProperCatBoostTrainer:
         
         # Train CatBoost model with proper hyperparameters
         self.model = CatBoostRegressor(
-            iterations=1000,
-            learning_rate=0.1,
+            iterations=2000,
+            learning_rate=0.05,
             depth=6,
-            l2_leaf_reg=3,
+            l2_leaf_reg=5,
             bootstrap_type='Bayesian',
             bagging_temperature=1,
             od_type='Iter',
