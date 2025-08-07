@@ -25,7 +25,10 @@ class ProperCatBoostTrainer:
         print("📊 LOADING PROPER TRAINING DATA (NO LEAKAGE)...")
         
         # Find the most recent proper training data file
-        data_files = [f for f in os.listdir('data/') if f.startswith('proper_training_data_')]
+        data_files = [
+            f for f in os.listdir('data/')
+            if f.startswith('proper_training_data_') and 'backup' not in f.lower()
+        ]
         if not data_files:
             print("❌ No proper training data found! Run create_proper_training_data.py first")
             return None
@@ -58,7 +61,11 @@ class ProperCatBoostTrainer:
             'hist_avg_receiving_yards', 'hist_avg_receiving_tds', 
             'hist_avg_receptions', 'hist_avg_targets', 'hist_avg_carries',
             'hist_std_fantasy_points', 'hist_max_fantasy_points', 'hist_min_fantasy_points',
-            'recent_avg_fantasy_points', 'recent_vs_season_trend'
+            'recent_avg_fantasy_points', 'recent_vs_season_trend',
+            'recent5_avg_fantasy_points', 'recent5_std_fantasy_points',
+            'weighted_avg_fantasy_points',
+            'eff_yards_per_target', 'eff_yards_per_carry',
+            'rate_receiving_td', 'rate_rushing_td', 'rate_pass_td_to_int'
         ]
         
         # Add position encoding
@@ -125,14 +132,16 @@ class ProperCatBoostTrainer:
         
         # Train CatBoost model with proper hyperparameters
         self.model = CatBoostRegressor(
-            iterations=3000,
+            iterations=2000,
             learning_rate=0.05,
-            depth=6,
-            l2_leaf_reg=5,
-            bootstrap_type='Bayesian',
-            bagging_temperature=1,
+            depth=5,
+            l2_leaf_reg=10,
+            bootstrap_type='Bernoulli',
+            subsample=0.8,
+            rsm=0.8,
+            random_strength=1.0,
             od_type='Iter',
-            od_wait=50,
+            od_wait=100,
             random_seed=42,
             verbose=False
         )

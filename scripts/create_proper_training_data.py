@@ -57,29 +57,48 @@ class ProperTrainingDataCreator:
             # Target: game i (future performance we want to predict)
             target_game = player_data.iloc[i]
             
-            # Calculate historical averages (features)
             # Recent trend (last 3 games vs all historical)
             recent_avg_fantasy_points = historical_games['fantasy_points'].tail(3).mean()
             recent_vs_season_trend = recent_avg_fantasy_points - historical_games['fantasy_points'].mean()
 
-            # Recency-weighted average fantasy points
+            # Recent 5-game stats (robust to short windows)
+            recent5 = historical_games.tail(5)
+            recent5_avg_fantasy_points = recent5['fantasy_points'].mean()
+            recent5_std_fantasy_points = recent5['fantasy_points'].std()
+
+            # Recency-weighted average fantasy points across seasons
             weighted_avg = 0
-            if len(historical_games) > 0:
-                seasons = historical_games['season'].unique()
-                if len(seasons) > 0:
-                    seasons_sorted = sorted(seasons, reverse=True)  # Most recent first
-                    weights = [0.5, 0.3, 0.2][:len(seasons_sorted)]  # Weights for up to 3 seasons
-                    weights += [0.1] * (len(seasons_sorted) - len(weights))  # Fallback for more
-                    weighted_sum = 0
-                    total_weight = 0
-                    for season, weight in zip(seasons_sorted, weights):
-                        season_data = historical_games[historical_games['season'] == season]
-                        season_avg = season_data['fantasy_points'].mean()
-                        weighted_sum += season_avg * weight * len(season_data)
-                        total_weight += weight * len(season_data)
-                    weighted_avg = weighted_sum / total_weight if total_weight > 0 else 0
-                else:
-                    weighted_avg = historical_games['fantasy_points'].mean()
+            seasons = historical_games['season'].unique()
+            if len(seasons) > 0:
+                seasons_sorted = sorted(seasons, reverse=True)  # Most recent first
+                weights = [0.5, 0.3, 0.2][:len(seasons_sorted)]  # Up to 3 seasons
+                if len(seasons_sorted) > len(weights):
+                    weights += [0.1] * (len(seasons_sorted) - len(weights))
+                weighted_sum = 0
+                total_weight = 0
+                for season, weight in zip(seasons_sorted, weights):
+                    season_data = historical_games[historical_games['season'] == season]
+                    season_avg = season_data['fantasy_points'].mean()
+                    weighted_sum += season_avg * weight * len(season_data)
+                    total_weight += weight * len(season_data)
+                weighted_avg = weighted_sum / total_weight if total_weight > 0 else 0
+
+            # Efficiency features (use sums to be robust to NaNs)
+            sum_rec_yards = historical_games['receiving_yards'].fillna(0).sum()
+            sum_targets = historical_games['targets'].fillna(0).sum()
+            sum_carries = historical_games['carries'].fillna(0).sum()
+            sum_rush_yards = historical_games['rushing_yards'].fillna(0).sum()
+            sum_receptions = historical_games['receptions'].fillna(0).sum()
+            sum_rec_tds = historical_games['receiving_tds'].fillna(0).sum()
+            sum_rush_tds = historical_games['rushing_tds'].fillna(0).sum()
+            sum_pass_tds = historical_games['passing_tds'].fillna(0).sum()
+            sum_ints = historical_games['interceptions'].fillna(0).sum()
+
+            eff_yards_per_target = sum_rec_yards / max(1.0, sum_targets)
+            eff_yards_per_carry = sum_rush_yards / max(1.0, sum_carries)
+            rate_receiving_td = sum_rec_tds / max(1.0, sum_receptions)
+            rate_rushing_td = sum_rush_tds / max(1.0, sum_carries)
+            rate_pass_td_to_int = (sum_pass_tds + 1.0) / (sum_ints + 1.0)
             
             # Target: actual fantasy points in the current game (what we want to predict)
             target_fantasy_points = target_game['fantasy_points']
@@ -110,9 +129,21 @@ class ProperTrainingDataCreator:
                 'hist_max_fantasy_points': historical_games['fantasy_points'].max(),
                 'hist_min_fantasy_points': historical_games['fantasy_points'].min(),
                 
+                # Trend and recency features
                 'recent_avg_fantasy_points': recent_avg_fantasy_points,
                 'recent_vs_season_trend': recent_vs_season_trend,
+                'recent5_avg_fantasy_points': recent5_avg_fantasy_points,
+                'recent5_std_fantasy_points': recent5_std_fantasy_points,
                 'weighted_avg_fantasy_points': weighted_avg,
+
+                # Efficiency features
+                'eff_yards_per_target': eff_yards_per_target,
+                'eff_yards_per_carry': eff_yards_per_carry,
+                'rate_receiving_td': rate_receiving_td,
+                'rate_rushing_td': rate_rushing_td,
+                'rate_pass_td_to_int': rate_pass_td_to_int,
+
+                # Target
                 'target_fantasy_points': target_fantasy_points
             }
             
