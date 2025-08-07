@@ -446,13 +446,25 @@ def suggest():
             boosted_val = 0.0 if pd.isna(boosted_score) else float(boosted_score)
             ai_val = 0.0 if pd.isna(ai_score) else float(ai_score)
             scarcity_val = 1.0 if pd.isna(scarcity_boost) else float(scarcity_boost)
+            bye_val = suggestion.get('bye_week', None)
+            if pd.isna(bye_val):
+                bye_val = None
+            team_val = suggestion.get('team', '')
+            if pd.isna(team_val):
+                team_val = ''
+            pos_val = suggestion.get('position', '')
+            if pd.isna(pos_val):
+                pos_val = ''
+            name_val = suggestion.get('name', 'Unknown Player')
+            if pd.isna(name_val):
+                name_val = 'Unknown Player'
             formatted_suggestions.append({
-                'name': suggestion['name'],
-                'position': suggestion['position'],
+                'name': name_val,
+                'position': pos_val,
                 'adp_rank': adp_val,
                 'projected_points': proj_val,
-                'bye_week': suggestion.get('bye_week', 'Unknown'),
-                'team': suggestion.get('team', ''),
+                'bye_week': bye_val,
+                'team': team_val,
                 'optimized_score': boosted_val,
                 'ai_score': ai_val,
                 'scarcity_boost': round(scarcity_val, 2)
