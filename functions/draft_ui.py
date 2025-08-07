@@ -241,13 +241,16 @@ def suggest():
         opponent_team = []
         drafted_names = []
         
+        # Collect all drafted player names
+        drafted_names = []
         if os.path.exists(STATE_FILE):
             with open(STATE_FILE, 'r') as f:
                 state = json.load(f)
                 our_team = state.get('our_team', [])
                 opponent_team = state.get('opponent_team', [])
+                drafted_by_others = state.get('drafted_by_others', [])
                 
-                # Collect all drafted player names
+                # Collect all drafted player names from all sources
                 if isinstance(our_team, dict):
                     for position, player in our_team.items():
                         if isinstance(player, dict) and player.get('name'):
@@ -264,6 +267,12 @@ def suggest():
                 
                 if isinstance(opponent_team, list):
                     for player in opponent_team:
+                        if isinstance(player, dict) and player.get('name'):
+                            drafted_names.append(player['name'])
+                
+                # Add players marked as taken by others
+                if isinstance(drafted_by_others, list):
+                    for player in drafted_by_others:
                         if isinstance(player, dict) and player.get('name'):
                             drafted_names.append(player['name'])
         
