@@ -441,6 +441,107 @@ def suggest():
             # If anything goes wrong, keep boosted_score sort
             pass
 
+        # Round- and roster-aware position weighting (deprioritize early QBs, delay K/DST)
+        try:
+            # Reconstruct simple position counts from our_team
+            position_counts = {}
+            if isinstance(our_team, dict):
+                for slot, player in our_team.items():
+                    if slot == 'Bench' and isinstance(player, list):
+                        for bench_p in player:
+                            if isinstance(bench_p, dict) and bench_p.get('position'):
+                                p = bench_p['position']
+                                position_counts[p] = position_counts.get(p, 0) + 1
+                    elif isinstance(player, dict) and player.get('position'):
+                        p = player['position']
+                        position_counts[p] = position_counts.get(p, 0) + 1
+
+            def position_round_multiplier(pos: str, rnd: int, counts: dict) -> float:
+                have_qb = counts.get('QB', 0)
+                have_te = counts.get('TE', 0)
+                have_rb = counts.get('RB', 0)
+                have_wr = counts.get('WR', 0)
+
+                # Baseline
+                w = 1.0
+
+                # Strongly delay K/DST until late
+                if pos in ('K', 'DST'):
+                    if rnd <= 12:
+                        return 0.2
+                    elif rnd <= 14:
+                        return 0.5
+                    else:
+                        return 0.9
+
+                # Deprioritize QB early in 1QB formats
+                if pos == 'QB':
+                    if rnd <= 2:
+                        w = 0.3
+                    elif rnd == 3:
+                        w = 0.5
+                    elif rnd in (4, 5):
+                        w = 0.7
+                    elif rnd in (6, 7):
+                        w = 0.85
+                    else:
+                        w = 1.0
+
+                    # If we still don't have a QB by mid rounds, gently increase urgency
+                    if have_qb == 0 and rnd >= 9:
+                        w = max(w, 1.05)
+                    if have_qb >= 1:
+                        # If QB filled, lower priority for additional QBs
+                        w = min(w, 0.6)
+                    return w
+
+                # RB/WR early priority until we have two each
+                if pos in ('RB', 'WR'):
+                    need_two = 2
+                    have = have_rb if pos == 'RB' else have_wr
+                    if rnd <= 2:
+                        w = 1.25
+                    elif rnd == 3:
+                        w = 1.15
+                    elif rnd in (4, 5):
+                        w = 1.1
+                    else:
+                        w = 1.0
+                    if have < need_two:
+                        w *= 1.1
+                    return w
+
+                # TE: mild early deprioritization unless we reach mid rounds without one
+                if pos == 'TE':
+                    if rnd <= 2:
+                        w = 0.85
+                    elif rnd == 3:
+                        w = 0.9
+                    else:
+                        w = 1.0
+                    if have_te == 0 and rnd >= 6:
+                        w = max(w, 1.05)
+                    return w
+
+                return w
+
+            # Apply multipliers to final_score if present, else boosted_score
+            round_weights = []
+            adjusted_scores = []
+            for _, row in enhanced_suggestions.iterrows():
+                pos = row.get('position', '')
+                base_score = float(row.get('final_score', row.get('boosted_score', 0.0)) or 0.0)
+                w = position_round_multiplier(pos, current_round, position_counts)
+                round_weights.append(w)
+                adjusted_scores.append(base_score * w)
+
+            enhanced_suggestions = enhanced_suggestions.copy()
+            enhanced_suggestions['round_weight'] = round_weights
+            enhanced_suggestions['final_score'] = adjusted_scores
+            enhanced_suggestions = enhanced_suggestions.sort_values('final_score', ascending=False)
+        except Exception as _:
+            pass
+
         # Format for frontend
         formatted_suggestions = []
         for _, suggestion in enhanced_suggestions.head(8).iterrows():  # Top 8 picks
