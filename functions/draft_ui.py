@@ -593,6 +593,29 @@ def suggest():
         except Exception as _:
             pass
  
+        # Encourage divergence from ADP when AI strongly disagrees (Rounds 1-2)
+        try:
+            if current_round <= 2 and 'adp_rank' in enhanced_suggestions.columns:
+                # Compute AI rank (higher ai_prediction -> better rank)
+                if 'ai_prediction' in enhanced_suggestions.columns:
+                    enhanced_suggestions = enhanced_suggestions.copy()
+                    enhanced_suggestions['ai_rank'] = enhanced_suggestions['ai_prediction'].rank(ascending=False, method='min')
+                    enhanced_suggestions['adp_rank_num'] = pd.to_numeric(enhanced_suggestions['adp_rank'], errors='coerce')
+                    n = max(1.0, float(len(enhanced_suggestions)))
+                    # Positive when AI ranks a player better than ADP
+                    enhanced_suggestions['rank_delta_norm'] = (
+                        (enhanced_suggestions['adp_rank_num'] - enhanced_suggestions['ai_rank']) / n
+                    ).fillna(0.0)
+                    # Gentle boost for AI favorites; slight penalty otherwise
+                    gamma = 0.25  # strength of exploration
+                    boost = 1.0 + gamma * enhanced_suggestions['rank_delta_norm']
+                    # Clamp to safe range to avoid extreme jumps
+                    boost = boost.clip(lower=0.90, upper=1.12)
+                    enhanced_suggestions['final_score'] = enhanced_suggestions['final_score'].astype(float) * boost.astype(float)
+                    enhanced_suggestions = enhanced_suggestions.sort_values('final_score', ascending=False)
+        except Exception as _:
+            pass
+
         # Enforce early-round QB deprioritization and non-QB gating
         try:
             qb_penalty = 1.0
