@@ -343,6 +343,11 @@ def suggest():
                             scarcity_boost = 1.5 if have_count == 0 else 1.2
                     else:
                         scarcity_boost = 0.7
+                    
+                    # Early-draft QB penalty (rounds 1-3)
+                    if round_num <= 3 and pos == 'QB':
+                        scarcity_boost *= 0.7
+                    
                     scarcity_boosts.append(scarcity_boost)
                 boosted_df['scarcity_boost'] = scarcity_boosts
                 return boosted_df
@@ -358,25 +363,31 @@ def suggest():
             else:
                 # Fallback to projected_points when AI not available
                 boosted['boosted_score'] = boosted.get('projected_points', 0) * boosted['scarcity_boost']
-            return boosted.sort_values('boosted_score', ascending=False)
+            
+            # VORP weighting (final sort)
+            replacement_levels = {'QB': 250, 'RB': 150, 'WR': 140, 'TE': 100, 'K': 90, 'DST': 80}
+            boosted['vorp'] = boosted['boosted_score'] - boosted['position'].map(replacement_levels).fillna(0)
+            return boosted.sort_values('vorp', ascending=False)
         
         # ALL available list should be AI-ranked
         if all_available:
-            print("📋 Returning ALL available players (AI-ranked)")
+            print("📋 Returning ALL available players (AI-ranked + VORP)")
             ranked = rank_with_ai(available_df)
             result_df = ranked.head(100)  # Limit for performance
             cleaned_df = clean_nan_for_json(result_df)
             return jsonify(cleaned_df.to_dict('records'))
         
-        # ROOKIE filter: AI-rank rookies in the available pool
+        # ROOKIE filter: revert to rookie ADP ranking (exclude drafted)
         if position_filter == 'ROOKIE':
-            print("🆕 Filtering for ROOKIE players only (AI-ranked)")
+            print("🆕 Filtering for ROOKIE players only (rookie ADP)")
             try:
-                available_rookies = available_df[available_df.get('is_rookie') == True].copy()
-                ranked_rookies = rank_with_ai(available_rookies)
-                rookies = ranked_rookies.head(50)
+                # Use global rookie_df and exclude any drafted names
+                available_rookies = rookie_df[~rookie_df['name'].isin(drafted_names)].copy()
+                # Sort by rookie ADP rank
+                available_rookies = available_rookies.sort_values('adp_rank', ascending=True, na_position='last')
+                rookies = available_rookies.head(50)
                 cleaned_rookies = clean_nan_for_json(rookies)
-                print(f"📊 Returning {len(rookies)} available rookies")
+                print(f"📊 Returning {len(rookies)} available rookies (rookie ADP)")
                 return jsonify(cleaned_rookies.to_dict('records'))
             except Exception as e:
                 print(f"❌ Error filtering rookies: {e}")
@@ -384,7 +395,7 @@ def suggest():
         
         # Position filters: AI-rank within position subset
         if position_filter in ['QB', 'RB', 'WR', 'TE', 'K', 'DST']:
-            print(f"🎯 Filtering for {position_filter} players only (AI-ranked)")
+            print(f"🎯 Filtering for {position_filter} players only (AI-ranked + VORP)")
             position_players = available_df[available_df['position'] == position_filter].copy()
             ranked = rank_with_ai(position_players)
             cleaned_position = clean_nan_for_json(ranked.head(50))
