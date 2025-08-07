@@ -606,6 +606,34 @@ def suggest():
             enhanced_suggestions = enhanced_suggestions.sort_values('final_score', ascending=False)
         except Exception:
             pass
+ 
+        # Enforce early-round QB deprioritization and non-QB gating
+        try:
+            qb_penalty = 1.0
+            if current_round <= 2:
+                qb_penalty = 0.10
+            elif current_round == 3:
+                qb_penalty = 0.35
+            elif current_round in (4, 5):
+                qb_penalty = 0.60
+            elif current_round in (6, 7):
+                qb_penalty = 0.85
+            else:
+                qb_penalty = 1.0
+
+            if qb_penalty < 1.0:
+                mask_qb = enhanced_suggestions['position'] == 'QB'
+                enhanced_suggestions.loc[mask_qb, 'final_score'] = (
+                    enhanced_suggestions.loc[mask_qb, 'final_score'].astype(float) * qb_penalty
+                )
+                enhanced_suggestions = enhanced_suggestions.sort_values('final_score', ascending=False)
+
+            if current_round <= 2:
+                non_qb = enhanced_suggestions[enhanced_suggestions['position'] != 'QB']
+                qbs = enhanced_suggestions[enhanced_suggestions['position'] == 'QB']
+                enhanced_suggestions = pd.concat([non_qb, qbs], ignore_index=True)
+        except Exception:
+            pass
 
         # Format for frontend
         formatted_suggestions = []
