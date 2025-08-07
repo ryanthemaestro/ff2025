@@ -243,8 +243,7 @@ def save_state(available_df, our_team, drafted_by_others, team_needs):
 def index():
     available_df, our_team, drafted_by_others, team_needs = load_state()
     
-    # Get top 50 available players for initial display
-    available_sorted = available_df.head(50)
+    available_sorted = available_df.sort_values('adp_rank', ascending=True).head(50)
     cleaned_available = clean_nan_for_json(available_sorted)
     
     context = {
@@ -266,44 +265,33 @@ def index():
 def suggest():
     """Suggest draft picks using our proper AI model"""
     try:
-        # Check for filtering parameters
-        position_filter = request.args.get('position')
-        all_available = request.args.get('all_available') == 'true'
-        # Load draft state
-        our_team = []
-        opponent_team = []
+        available_df, our_team, drafted_by_others, _ = load_state()
+        
         drafted_names = []
         
-        if os.path.exists(STATE_FILE):
-            with open(STATE_FILE, 'r') as f:
-                state = json.load(f)
-                our_team = state.get('our_team', [])
-                opponent_team = state.get('opponent_team', [])
-                
-                # Collect all drafted player names
-                if isinstance(our_team, dict):
-                    for position, player in our_team.items():
-                        if isinstance(player, dict) and player.get('name'):
-                            drafted_names.append(player['name'])
-                        # Handle bench (list of players)
-                        elif position == 'Bench' and isinstance(player, list):
-                            for bench_player in player:
-                                if isinstance(bench_player, dict) and bench_player.get('name'):
-                                    drafted_names.append(bench_player['name'])
-                elif isinstance(our_team, list):
-                    for player in our_team:
-                        if isinstance(player, dict) and player.get('name'):
-                            drafted_names.append(player['name'])
-                
-                if isinstance(opponent_team, list):
-                    for player in opponent_team:
-                        if isinstance(player, dict) and player.get('name'):
-                            drafted_names.append(player['name'])
+        # Collect from our_team
+        if isinstance(our_team, dict):
+            for position, player in our_team.items():
+                if isinstance(player, dict) and player.get('name'):
+                    drafted_names.append(player['name'])
+                elif position == 'Bench' and isinstance(player, list):
+                    for bench_player in player:
+                        if isinstance(bench_player, dict) and bench_player.get('name'):
+                            drafted_names.append(bench_player['name'])
+        elif isinstance(our_team, list):
+            for player in our_team:
+                if isinstance(player, dict) and player.get('name'):
+                    drafted_names.append(player['name'])
         
-        print(f"🚫 Excluding {len(drafted_names)} drafted players from AI recommendations: {drafted_names}")
+        # Collect from drafted_by_others
+        for player in drafted_by_others:
+            if isinstance(player, dict) and player.get('name'):
+                drafted_names.append(player['name'])
+        
+        print(f"🚫 Excluding {len(drafted_names)} drafted players from AI recommendations")
         
         # Filter out drafted players from ADP data  
-        available_df = df[~df['name'].isin(drafted_names)].copy()
+        available_df = available_df[~available_df['name'].isin(drafted_names)].copy()
         
         # Handle filtering requests
         if all_available:
@@ -321,7 +309,7 @@ def suggest():
             # Use the globally loaded rookie_df
             try:
                 # Filter out any drafted rookies
-                available_rookies = rookie_df[~rookie_df['name'].isin(drafted_names)].copy()
+                available_rookies = available_df[available_df['is_rookie'] == True].copy()
                 
                 # Sort by rookie ADP rank (already loaded properly)
                 available_rookies = available_rookies.sort_values('adp_rank', ascending=True)
@@ -562,7 +550,7 @@ def draft():
         if player_row.empty:
             return jsonify({'success': False, 'message': 'Player not found'})
         
-        # Get player data
+        actual_name = player_row.iloc[0]['name']
         player_dict = player_row.iloc[0].to_dict()
         # Convert any numpy/pandas types to native Python types
         for key, value in player_dict.items():
@@ -577,7 +565,7 @@ def draft():
             return jsonify({'success': False, 'message': 'No available roster spots'})
         
         # Remove from available
-        available_df = available_df[available_df['name'] != player_name]
+        available_df = available_df[available_df['name'] != actual_name]
         
         # Save state
         save_state(available_df, our_team, drafted_by_others, team_needs)
@@ -609,7 +597,7 @@ def mark_taken():
         if player_row.empty:
             return jsonify({'success': False, 'message': 'Player not found'})
         
-        # Add to drafted by others
+        actual_name = player_row.iloc[0]['name']
         player_dict = player_row.iloc[0].to_dict()
         # Convert any numpy/pandas types to native Python types
         for key, value in player_dict.items():
@@ -627,7 +615,7 @@ def mark_taken():
         drafted_by_others.append(player_dict)
         
         # Remove from available
-        available_df = available_df[available_df['name'] != player_name]
+        available_df = available_df[available_df['name'] != actual_name]
         
         # Save state
         save_state(available_df, our_team, drafted_by_others, team_needs)

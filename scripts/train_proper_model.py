@@ -125,7 +125,7 @@ class ProperCatBoostTrainer:
         
         # Train CatBoost model with proper hyperparameters
         self.model = CatBoostRegressor(
-            iterations=2000,
+            iterations=3000,
             learning_rate=0.05,
             depth=6,
             l2_leaf_reg=5,
@@ -228,7 +228,7 @@ class ProperCatBoostTrainer:
         # Step 4: Save model
         model_path, metadata_path = self.save_model(metrics)
         
-        print(f"\n🎉 PROPER MODEL TRAINING COMPLETE!")
+        print(f"\n�� PROPER MODEL TRAINING COMPLETE!")
         print(f"✅ Model trained on leak-free data")
         print(f"✅ Test accuracy: {metrics['test_r2']:.3f} R² score")
         print(f"✅ Test error: {metrics['test_mae']:.2f} fantasy points MAE")
