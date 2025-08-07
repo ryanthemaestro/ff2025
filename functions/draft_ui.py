@@ -355,91 +355,34 @@ def suggest():
         print(f"📊 Estimated draft round: {current_round}")
         print("🎯 Returning AI recommendations")
         
-        # Simple scarcity boost function
-        def apply_simple_scarcity_boost(players_df, drafted_team, round_num):
-            """Apply a simple position-based scarcity boost"""
-            boosted_df = players_df.copy()
-            
-            # Count how many of each position we already have
-            position_counts = {}
-            if isinstance(drafted_team, dict):
-                for position, player in drafted_team.items():
-                    if isinstance(player, dict) and player.get('position'):
-                        pos = player['position']
-                        position_counts[pos] = position_counts.get(pos, 0) + 1
-                    elif position == 'Bench' and isinstance(player, list):
-                        for bench_player in player:
-                            if isinstance(bench_player, dict) and bench_player.get('position'):
-                                pos = bench_player['position']
-                                position_counts[pos] = position_counts.get(pos, 0) + 1
-            elif isinstance(drafted_team, list):
-                for player in drafted_team:
-                    if isinstance(player, dict) and player.get('position'):
-                        pos = player['position']
-                        position_counts[pos] = position_counts.get(pos, 0) + 1
-            
-            # Define position needs (typical draft strategy)
-            position_targets = {'QB': 1, 'RB': 2, 'WR': 2, 'TE': 1, 'K': 1, 'DST': 1}
-            
-            # Calculate scarcity boost for each player
-            scarcity_boosts = []
-            for _, player in boosted_df.iterrows():
-                pos = player['position']
-                have_count = position_counts.get(pos, 0)
-                target_count = position_targets.get(pos, 1)
-                
-                # Tune boosts: stronger for RB/WR, weaker for QB
-                if have_count < target_count:
-                    if pos in ['RB', 'WR']:
-                        scarcity_boost = 2.0 if have_count == 0 else 1.5  # Increased
-                    elif pos == 'QB':
-                        scarcity_boost = 1.0 if have_count == 0 else 0.8  # Decreased
-                    else:
-                        scarcity_boost = 1.5 if have_count == 0 else 1.2
-                else:
-                    scarcity_boost = 0.7  # Slightly lowered
-                
-                # Early-draft QB penalty (rounds 1-3)
-                if round_num <= 3 and pos == 'QB':
-                    scarcity_boost *= 0.7
+        # Filter to draftable positions and exclude unknown names
+        draftable_positions = {'QB', 'RB', 'WR', 'TE', 'K', 'DST'}
+        model_pool = available_df[available_df['position'].isin(draftable_positions)].copy()
+        model_pool = model_pool[model_pool['name'].notna()]
+        model_pool = model_pool[~model_pool['name'].str.lower().str.contains('unknown', na=False)]
 
-                scarcity_boosts.append(scarcity_boost)
-            
-            boosted_df['scarcity_boost'] = scarcity_boosts
-            return boosted_df
-        
-        # Use the NEW PROPER AI model (no data leakage)
+        # Use the PROPER AI model (no data leakage)
         try:
             from scripts.proper_model_adapter import predict_players, is_model_available
             
             if is_model_available():
                 print("🤖 Using PROPER AI model with no data leakage")
-                ai_results = predict_players(available_df)
-                if ai_results is not None:
-                    enhanced_suggestions = apply_simple_scarcity_boost(ai_results, our_team, current_round)
-                    enhanced_suggestions['boosted_score'] = (
-                        enhanced_suggestions['ai_prediction'] * enhanced_suggestions['scarcity_boost']
-                    )
-                    enhanced_suggestions = enhanced_suggestions.sort_values('boosted_score', ascending=False)
-                else:
-                    raise RuntimeError('AI prediction failed')
+                ai_results = predict_players(model_pool)
+                if ai_results is None or ai_results.empty:
+                    raise RuntimeError('AI returned no results')
+                ranked = ai_results.sort_values('ai_prediction', ascending=False)
             else:
                 raise RuntimeError('Model unavailable')
         except Exception as e:
-            print(f"❌ AI unavailable, using scarcity-only: {e}")
-            enhanced_suggestions = apply_simple_scarcity_boost(available_df, our_team, current_round)
-            enhanced_suggestions['boosted_score'] = (
-                enhanced_suggestions['projected_points'] * enhanced_suggestions['scarcity_boost']
-            )
-            enhanced_suggestions = enhanced_suggestions.sort_values('boosted_score', ascending=False)
+            print(f"❌ AI unavailable, fallback to projected_points: {e}")
+            ranked = model_pool.sort_values('projected_points', ascending=False)
         
         # Format for frontend
         formatted_suggestions = []
-        for _, suggestion in enhanced_suggestions.head(8).iterrows():  # Top 8 picks
-            # Use boosted score as the optimized score
-            boosted_score = suggestion.get('boosted_score', suggestion.get('projected_points', 0))
-            scarcity_boost = suggestion.get('scarcity_boost', 1.0)
+        for _, suggestion in ranked.head(8).iterrows():  # Top 8 picks
             ai_score = suggestion.get('ai_prediction', 0)
+            boosted_score = ai_score if not pd.isna(ai_score) else suggestion.get('projected_points', 0)
+            
             adp_val = suggestion.get('adp_rank', None)
             if pd.isna(adp_val):
                 adp_val = None
@@ -447,30 +390,17 @@ def suggest():
             proj_val = 0.0 if pd.isna(proj_val) else float(proj_val)
             boosted_val = 0.0 if pd.isna(boosted_score) else float(boosted_score)
             ai_val = 0.0 if pd.isna(ai_score) else float(ai_score)
-            scarcity_val = 1.0 if pd.isna(scarcity_boost) else float(scarcity_boost)
-            bye_val = suggestion.get('bye_week', None)
-            if pd.isna(bye_val):
-                bye_val = None
-            team_val = suggestion.get('team', '')
-            if pd.isna(team_val):
-                team_val = ''
-            pos_val = suggestion.get('position', '')
-            if pd.isna(pos_val):
-                pos_val = ''
-            name_val = suggestion.get('name', 'Unknown Player')
-            if pd.isna(name_val):
-                name_val = 'Unknown Player'
             
             formatted_suggestions.append({
-                'name': name_val,
-                'position': pos_val,
+                'name': suggestion['name'],
+                'position': suggestion['position'],
                 'adp_rank': adp_val,
                 'projected_points': proj_val,
-                'bye_week': bye_val,
-                'team': team_val,
+                'bye_week': suggestion.get('bye_week', 'Unknown'),
+                'team': suggestion.get('team', ''),
                 'optimized_score': boosted_val,
                 'ai_score': ai_val,
-                'scarcity_boost': round(scarcity_val, 2)
+                'scarcity_boost': 1.0
             })
         
         # Replacement levels (for 12-team league; adjust as needed)

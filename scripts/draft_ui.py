@@ -406,46 +406,41 @@ def suggest():
             cleaned_position = clean_nan_for_json(ranked.head(50))
             return jsonify(cleaned_position.to_dict('records'))
         
-        # Default: return top AI recommendations (already boosted and formatted below)
-        # Estimate current round for formatting
+        # Default: return top AI recommendations (model-only)
         total_picks = len(drafted_names)
         current_round = (total_picks // 10) + 1
         print(f"📊 Estimated draft round: {current_round}")
-        print("🎯 Returning AI recommendations")
+        print("🎯 Returning AI recommendations (model-only)")
         
-        # Use the NEW PROPER AI model (no data leakage)
+        # Filter to draftable positions and clean names
+        draftable_positions = {'QB', 'RB', 'WR', 'TE', 'K', 'DST'}
+        model_pool = available_df[available_df['position'].isin(draftable_positions)].copy()
+        model_pool = model_pool[model_pool['name'].notna()]
+        model_pool = model_pool[~model_pool['name'].str.lower().str.contains('unknown', na=False)]
+        
         try:
             from proper_model_adapter import predict_players, is_model_available
-            
             if is_model_available():
-                print("🤖 Using PROPER AI model with no data leakage")
-                ai_results = predict_players(available_df)
-                if ai_results is not None:
-                    enhanced_suggestions = rank_with_ai(available_df)
-                else:
-                    print("❌ AI prediction failed, using scarcity-only")
-                    enhanced_suggestions = rank_with_ai(available_df)
+                ai_df = predict_players(model_pool)
+                if ai_df is None or ai_df.empty:
+                    raise RuntimeError('AI returned no results')
+                ranked = ai_df.sort_values('ai_prediction', ascending=False)
             else:
-                print("❌ Proper AI model not available, using scarcity-based sorting")
-                enhanced_suggestions = rank_with_ai(available_df)
+                raise RuntimeError('Model unavailable')
         except Exception as e:
-            print(f"❌ Error with AI model: {e}")
-            enhanced_suggestions = rank_with_ai(available_df)
+            print(f"❌ AI unavailable, fallback to projected_points: {e}")
+            ranked = model_pool.sort_values('projected_points', ascending=False)
         
         # Format for frontend (top 8)
         formatted_suggestions = []
-        for _, suggestion in enhanced_suggestions.head(8).iterrows():
-            boosted_score = suggestion.get('boosted_score', suggestion.get('projected_points', 0))
-            scarcity_boost = suggestion.get('scarcity_boost', 1.0)
+        for _, suggestion in ranked.head(8).iterrows():
             ai_score = suggestion.get('ai_prediction', 0)
             adp_val = suggestion.get('adp_rank', None)
             if pd.isna(adp_val):
                 adp_val = None
             proj_val = suggestion.get('projected_points', 0)
             proj_val = 0.0 if pd.isna(proj_val) else float(proj_val)
-            boosted_val = 0.0 if pd.isna(boosted_score) else float(boosted_score)
             ai_val = 0.0 if pd.isna(ai_score) else float(ai_score)
-            scarcity_val = 1.0 if pd.isna(scarcity_boost) else float(scarcity_boost)
             bye_val = suggestion.get('bye_week', None)
             if pd.isna(bye_val):
                 bye_val = None
@@ -465,9 +460,9 @@ def suggest():
                 'projected_points': proj_val,
                 'bye_week': bye_val,
                 'team': team_val,
-                'optimized_score': boosted_val,
+                'optimized_score': ai_val,
                 'ai_score': ai_val,
-                'scarcity_boost': round(scarcity_val, 2)
+                'scarcity_boost': 1.0
             })
         
         return jsonify(formatted_suggestions)
