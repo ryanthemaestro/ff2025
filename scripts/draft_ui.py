@@ -438,16 +438,24 @@ def suggest():
             boosted_score = suggestion.get('boosted_score', suggestion.get('projected_points', 0))
             scarcity_boost = suggestion.get('scarcity_boost', 1.0)
             ai_score = suggestion.get('ai_prediction', 0)
+            adp_val = suggestion.get('adp_rank', None)
+            if pd.isna(adp_val):
+                adp_val = None
+            proj_val = suggestion.get('projected_points', 0)
+            proj_val = 0.0 if pd.isna(proj_val) else float(proj_val)
+            boosted_val = 0.0 if pd.isna(boosted_score) else float(boosted_score)
+            ai_val = 0.0 if pd.isna(ai_score) else float(ai_score)
+            scarcity_val = 1.0 if pd.isna(scarcity_boost) else float(scarcity_boost)
             formatted_suggestions.append({
                 'name': suggestion['name'],
                 'position': suggestion['position'],
-                'adp_rank': suggestion.get('adp_rank', None),
-                'projected_points': float(suggestion['projected_points']) if not pd.isna(suggestion.get('projected_points', 0)) else 0.0,
+                'adp_rank': adp_val,
+                'projected_points': proj_val,
                 'bye_week': suggestion.get('bye_week', 'Unknown'),
                 'team': suggestion.get('team', ''),
-                'optimized_score': float(boosted_score) if not pd.isna(boosted_score) else 0.0,
-                'ai_score': float(ai_score) if not pd.isna(ai_score) else 0.0,
-                'scarcity_boost': round(float(scarcity_boost), 2) if not pd.isna(scarcity_boost) else 1.0
+                'optimized_score': boosted_val,
+                'ai_score': ai_val,
+                'scarcity_boost': round(scarcity_val, 2)
             })
         
         return jsonify(formatted_suggestions)

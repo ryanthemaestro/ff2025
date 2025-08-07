@@ -31,14 +31,25 @@ class ProperModelAdapter:
     def load_model(self):
         """Load the proper CatBoost model"""
         try:
-            model_path = '../models/proper_fantasy_model.pkl' if not os.path.exists('models/proper_fantasy_model.pkl') else 'models/proper_fantasy_model.pkl'
-            if os.path.exists(model_path):
-                self.model = joblib.load(model_path)
-                print("✅ Loaded proper AI model (no data leakage)")
-                return True
-            else:
-                print(f"❌ Proper model not found at {model_path}")
+            candidate_paths = [
+                'models/proper_fantasy_model.pkl',
+                '../models/proper_fantasy_model.pkl',
+                'functions/models/proper_fantasy_model.pkl',
+                'deploy_bundle/models/proper_fantasy_model.pkl',
+                'deploy_bundle/functions/models/proper_fantasy_model.pkl'
+            ]
+            chosen_path = None
+            for path in candidate_paths:
+                if os.path.exists(path):
+                    chosen_path = path
+                    break
+            if chosen_path is None:
+                print(f"❌ Proper model not found. Tried: {candidate_paths}")
+                self.model = None
                 return False
+            self.model = joblib.load(chosen_path)
+            print(f"✅ Loaded proper AI model from: {chosen_path}")
+            return True
         except Exception as e:
             print(f"❌ Error loading proper model: {e}")
             self.model = None
