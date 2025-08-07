@@ -617,6 +617,13 @@ def mark_taken():
                 player_dict[key] = None
             elif hasattr(value, 'item'):  # numpy types
                 player_dict[key] = value.item()
+        
+        # Check if already marked using fuzzy matching
+        already_drafted = any(fuzzy_name_match(p.get('name', ''), player_name) for p in drafted_by_others if isinstance(p, dict) and p.get('name'))
+        if already_drafted:
+            return jsonify({'success': False, 'error': 'Player already marked as taken'})
+        
+        # Add to drafted_by_others (use the found player_data which has standardized name)
         drafted_by_others.append(player_dict)
         
         # Remove from available

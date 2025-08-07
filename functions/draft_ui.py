@@ -658,14 +658,12 @@ def mark_taken():
             state['drafted_by_others'] = []
         
         # Check if already marked using fuzzy matching
-        already_drafted = False
-        for existing_player in state['drafted_by_others']:
-            if isinstance(existing_player, dict) and fuzzy_name_match(existing_player.get('name', ''), player_name):
-                already_drafted = True
-                break
+        already_drafted = any(fuzzy_name_match(p.get('name', ''), player_name) for p in state['drafted_by_others'] if isinstance(p, dict) and p.get('name'))
+        if already_drafted:
+            return jsonify({'success': False, 'error': 'Player already marked as taken'})
         
-        if not already_drafted:
-            state['drafted_by_others'].append(player_data)
+        # Add to drafted_by_others (use the found player_data which has standardized name)
+        state['drafted_by_others'].append(player_data)
         
         # Save state
         with open(STATE_FILE, 'w') as f:
