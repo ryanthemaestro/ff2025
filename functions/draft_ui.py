@@ -317,6 +317,9 @@ def suggest():
         # Handle filtering requests
         if all_available:
             print("📋 Returning ALL available players")
+            # Only show draftable positions in ALL
+            draftable_positions = {'QB', 'RB', 'WR', 'TE', 'K', 'DST'}
+            available_df = available_df[available_df['position'].isin(draftable_positions)].copy()
             if 'adp_rank' in available_df.columns:
                 sorted_df = available_df.sort_values('adp_rank', ascending=True, na_position='last')
             else:
@@ -330,11 +333,10 @@ def suggest():
             try:
                 # Filter out any drafted rookies using fuzzy matching
                 available_rookies = rookie_df[~rookie_df['name'].apply(lambda x: any(fuzzy_name_match(x, name) for name in drafted_names))].copy()
-                
+                # Sort by rookie ADP rank
                 available_rookies = available_rookies.sort_values('adp_rank', ascending=True)
                 rookies = available_rookies.head(50)
                 cleaned_rookies = clean_nan_for_json(rookies)
-                
                 print(f"📊 Returning {len(rookies)} available rookies")
                 return jsonify(cleaned_rookies.to_dict('records'))
             except Exception as e:
@@ -412,37 +414,19 @@ def suggest():
             
             if is_model_available():
                 print("🤖 Using PROPER AI model with no data leakage")
-                # Get AI predictions for available players
                 ai_results = predict_players(available_df)
-                
                 if ai_results is not None:
-                    # Apply scarcity boost to AI predictions
                     enhanced_suggestions = apply_simple_scarcity_boost(ai_results, our_team, current_round)
-                    
-                    # Calculate boosted score using AI predictions
                     enhanced_suggestions['boosted_score'] = (
                         enhanced_suggestions['ai_prediction'] * enhanced_suggestions['scarcity_boost']
                     )
-                    
-                    # Sort by boosted AI scores
                     enhanced_suggestions = enhanced_suggestions.sort_values('boosted_score', ascending=False)
-                    print(f"✅ Using PROPER AI × Scarcity for {len(enhanced_suggestions)} players")
                 else:
-                    print("❌ AI prediction failed, using scarcity-only")
-                    enhanced_suggestions = apply_simple_scarcity_boost(available_df, our_team, current_round)
-                    enhanced_suggestions['boosted_score'] = (
-                        enhanced_suggestions['projected_points'] * enhanced_suggestions['scarcity_boost']
-                    )
-                    enhanced_suggestions = enhanced_suggestions.sort_values('boosted_score', ascending=False)
+                    raise RuntimeError('AI prediction failed')
             else:
-                print("❌ Proper AI model not available, using scarcity-based sorting")
-                enhanced_suggestions = apply_simple_scarcity_boost(available_df, our_team, current_round)
-                enhanced_suggestions['boosted_score'] = (
-                    enhanced_suggestions['projected_points'] * enhanced_suggestions['scarcity_boost']
-                )
-                enhanced_suggestions = enhanced_suggestions.sort_values('boosted_score', ascending=False)
+                raise RuntimeError('Model unavailable')
         except Exception as e:
-            print(f"❌ Error with AI model: {e}")
+            print(f"❌ AI unavailable, using scarcity-only: {e}")
             enhanced_suggestions = apply_simple_scarcity_boost(available_df, our_team, current_round)
             enhanced_suggestions['boosted_score'] = (
                 enhanced_suggestions['projected_points'] * enhanced_suggestions['scarcity_boost']

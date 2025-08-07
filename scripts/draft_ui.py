@@ -369,11 +369,16 @@ def suggest():
             boosted['vorp'] = boosted['boosted_score'] - boosted['position'].map(replacement_levels).fillna(0)
             return boosted.sort_values('vorp', ascending=False)
         
-        # ALL available list should be AI-ranked
+        # ALL available list should be ADP-ranked and limited to draftable positions
         if all_available:
-            print("📋 Returning ALL available players (AI-ranked + VORP)")
-            ranked = rank_with_ai(available_df)
-            result_df = ranked.head(100)  # Limit for performance
+            print("📋 Returning ALL available players (ADP-ranked; draftable positions only)")
+            draftable_positions = {'QB', 'RB', 'WR', 'TE', 'K', 'DST'}
+            pool = available_df[available_df['position'].isin(draftable_positions)].copy()
+            if 'adp_rank' in pool.columns:
+                sorted_df = pool.sort_values('adp_rank', ascending=True, na_position='last')
+            else:
+                sorted_df = pool
+            result_df = sorted_df.head(100)  # Limit for performance
             cleaned_df = clean_nan_for_json(result_df)
             return jsonify(cleaned_df.to_dict('records'))
         
