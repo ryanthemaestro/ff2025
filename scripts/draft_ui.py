@@ -243,7 +243,8 @@ def save_state(available_df, our_team, drafted_by_others, team_needs):
 def index():
     available_df, our_team, drafted_by_others, team_needs = load_state()
     
-    available_sorted = available_df.sort_values('adp_rank', ascending=True).head(50)
+    # Get top 50 available players for initial display
+    available_sorted = available_df.head(50)
     cleaned_available = clean_nan_for_json(available_sorted)
     
     context = {
@@ -268,203 +269,225 @@ def suggest():
         # Check for filtering parameters
         position_filter = request.args.get('position')
         all_available = request.args.get('all_available') == 'true'
-        
-        # Load draft state and compute drafted names once
-        available_df, our_team, drafted_by_others, _ = load_state()
+        # Load draft state
+        our_team = []
+        opponent_team = []
         drafted_names = []
         
-        # Collect from our team
-        if isinstance(our_team, dict):
-            for position, player in our_team.items():
-                if isinstance(player, dict) and player.get('name'):
-                    drafted_names.append(player['name'])
-                elif position == 'Bench' and isinstance(player, list):
-                    for bench_player in player:
-                        if isinstance(bench_player, dict) and bench_player.get('name'):
-                            drafted_names.append(bench_player['name'])
-        elif isinstance(our_team, list):
-            for player in our_team:
-                if isinstance(player, dict) and player.get('name'):
-                    drafted_names.append(player['name'])
-        
-        # Collect from drafted_by_others
-        for player in drafted_by_others:
-            if isinstance(player, dict) and player.get('name'):
-                drafted_names.append(player['name'])
-        
-        print(f"🚫 Excluding {len(drafted_names)} drafted players from AI recommendations")
-        
-        # Apply drafted filter to the current available pool
-        available_df = available_df[~available_df['name'].isin(drafted_names)].copy()
-        
-        # Helper to rank a dataframe by AI × Scarcity
-        def rank_with_ai(players_df):
-            try:
-                from proper_model_adapter import predict_players, is_model_available
-                if is_model_available():
-                    ai_results = predict_players(players_df)
-                else:
-                    ai_results = None
-            except Exception as e:
-                print(f"❌ Error loading AI model: {e}")
-                ai_results = None
-            
-            # Scarcity boost
-            def apply_simple_scarcity_boost(players_df_inner, drafted_team, round_num):
-                boosted_df = players_df_inner.copy()
-                position_counts = {}
-                if isinstance(drafted_team, dict):
-                    for position, player in drafted_team.items():
-                        if isinstance(player, dict) and player.get('position'):
-                            pos = player['position']
-                            position_counts[pos] = position_counts.get(pos, 0) + 1
+        if os.path.exists(STATE_FILE):
+            with open(STATE_FILE, 'r') as f:
+                state = json.load(f)
+                our_team = state.get('our_team', [])
+                opponent_team = state.get('opponent_team', [])
+                
+                # Collect all drafted player names
+                if isinstance(our_team, dict):
+                    for position, player in our_team.items():
+                        if isinstance(player, dict) and player.get('name'):
+                            drafted_names.append(player['name'])
+                        # Handle bench (list of players)
                         elif position == 'Bench' and isinstance(player, list):
                             for bench_player in player:
-                                if isinstance(bench_player, dict) and bench_player.get('position'):
-                                    pos = bench_player['position']
-                                    position_counts[pos] = position_counts.get(pos, 0) + 1
-                elif isinstance(drafted_team, list):
-                    for player in drafted_team:
-                        if isinstance(player, dict) and player.get('position'):
-                            pos = player['position']
-                            position_counts[pos] = position_counts.get(pos, 0) + 1
-                position_targets = {'QB': 1, 'RB': 2, 'WR': 2, 'TE': 1, 'K': 1, 'DST': 1}
-                scarcity_boosts = []
-                for _, player in boosted_df.iterrows():
-                    pos = player['position']
-                    have_count = position_counts.get(pos, 0)
-                    target_count = position_targets.get(pos, 1)
-                    if have_count < target_count:
-                        if pos in ['RB', 'WR']:
-                            scarcity_boost = 2.0 if have_count == 0 else 1.5
-                        elif pos == 'QB':
-                            scarcity_boost = 1.0 if have_count == 0 else 0.8
-                        else:
-                            scarcity_boost = 1.5 if have_count == 0 else 1.2
-                    else:
-                        scarcity_boost = 0.7
-                    
-                    # Early-draft QB penalty (rounds 1-3)
-                    if round_num <= 3 and pos == 'QB':
-                        scarcity_boost *= 0.7
-                    
-                    scarcity_boosts.append(scarcity_boost)
-                boosted_df['scarcity_boost'] = scarcity_boosts
-                return boosted_df
-            
-            # Estimate current round
-            total_picks = len(drafted_names)
-            current_round = (total_picks // 10) + 1
-            
-            base_df = ai_results if ai_results is not None else players_df.copy()
-            boosted = apply_simple_scarcity_boost(base_df, our_team, current_round)
-            if ai_results is not None:
-                boosted['boosted_score'] = boosted['ai_prediction'] * boosted['scarcity_boost']
-            else:
-                # Fallback to projected_points when AI not available
-                boosted['boosted_score'] = boosted.get('projected_points', 0) * boosted['scarcity_boost']
-            
-            # VORP weighting (final sort)
-            replacement_levels = {'QB': 250, 'RB': 150, 'WR': 140, 'TE': 100, 'K': 90, 'DST': 80}
-            boosted['vorp'] = boosted['boosted_score'] - boosted['position'].map(replacement_levels).fillna(0)
-            return boosted.sort_values('vorp', ascending=False)
+                                if isinstance(bench_player, dict) and bench_player.get('name'):
+                                    drafted_names.append(bench_player['name'])
+                elif isinstance(our_team, list):
+                    for player in our_team:
+                        if isinstance(player, dict) and player.get('name'):
+                            drafted_names.append(player['name'])
+                
+                if isinstance(opponent_team, list):
+                    for player in opponent_team:
+                        if isinstance(player, dict) and player.get('name'):
+                            drafted_names.append(player['name'])
         
-        # ALL available list should be ADP-ranked and limited to draftable positions
+        print(f"🚫 Excluding {len(drafted_names)} drafted players from AI recommendations: {drafted_names}")
+        
+        # Filter out drafted players from ADP data  
+        available_df = df[~df['name'].isin(drafted_names)].copy()
+        
+        # Handle filtering requests
         if all_available:
-            print("📋 Returning ALL available players (ADP-ranked; draftable positions only)")
-            draftable_positions = {'QB', 'RB', 'WR', 'TE', 'K', 'DST'}
-            pool = available_df[available_df['position'].isin(draftable_positions)].copy()
-            if 'adp_rank' in pool.columns:
-                sorted_df = pool.sort_values('adp_rank', ascending=True, na_position='last')
+            print("📋 Returning ALL available players")
+            if 'adp_rank' in available_df.columns:
+                sorted_df = available_df.sort_values('adp_rank', ascending=True, na_position='last')
             else:
-                sorted_df = pool
+                sorted_df = available_df
             result_df = sorted_df.head(100)  # Limit for performance
             cleaned_df = clean_nan_for_json(result_df)
             return jsonify(cleaned_df.to_dict('records'))
         
-        # ROOKIE filter: revert to rookie ADP ranking (exclude drafted)
-        if position_filter == 'ROOKIE':
-            print("🆕 Filtering for ROOKIE players only (rookie ADP)")
+        elif position_filter == 'ROOKIE':
+            print("🆕 Filtering for ROOKIE players only")
+            # Use the globally loaded rookie_df
             try:
-                # Use global rookie_df and exclude any drafted names
+                # Filter out any drafted rookies
                 available_rookies = rookie_df[~rookie_df['name'].isin(drafted_names)].copy()
-                # Sort by rookie ADP rank
-                available_rookies = available_rookies.sort_values('adp_rank', ascending=True, na_position='last')
+                
+                # Sort by rookie ADP rank (already loaded properly)
+                available_rookies = available_rookies.sort_values('adp_rank', ascending=True)
+                
+                # Take top 50 rookies
                 rookies = available_rookies.head(50)
                 cleaned_rookies = clean_nan_for_json(rookies)
-                print(f"📊 Returning {len(rookies)} available rookies (rookie ADP)")
+                
+                print(f"📊 Returning {len(rookies)} available rookies (out of {len(rookie_df)} total)")
                 return jsonify(cleaned_rookies.to_dict('records'))
             except Exception as e:
                 print(f"❌ Error filtering rookies: {e}")
                 return jsonify([])
         
-        # Position filters: AI-rank within position subset
-        if position_filter in ['QB', 'RB', 'WR', 'TE', 'K', 'DST']:
-            print(f"🎯 Filtering for {position_filter} players only (AI-ranked + VORP)")
-            position_players = available_df[available_df['position'] == position_filter].copy()
-            ranked = rank_with_ai(position_players)
-            cleaned_position = clean_nan_for_json(ranked.head(50))
+        elif position_filter in ['QB', 'RB', 'WR', 'TE', 'K', 'DST']:
+            print(f"🎯 Filtering for {position_filter} players only")
+            position_players = available_df[available_df['position'] == position_filter].head(50)
+            cleaned_position = clean_nan_for_json(position_players)
             return jsonify(cleaned_position.to_dict('records'))
         
-        # Default: return top AI recommendations (model-only)
+        # Estimate current round
         total_picks = len(drafted_names)
         current_round = (total_picks // 10) + 1
         print(f"📊 Estimated draft round: {current_round}")
-        print("🎯 Returning AI recommendations (model-only)")
+        print("🎯 Returning AI recommendations")
         
-        # Filter to draftable positions and clean names
-        draftable_positions = {'QB', 'RB', 'WR', 'TE', 'K', 'DST'}
-        model_pool = available_df[available_df['position'].isin(draftable_positions)].copy()
-        model_pool = model_pool[model_pool['name'].notna()]
-        model_pool = model_pool[~model_pool['name'].str.lower().str.contains('unknown', na=False)]
+        # Simple scarcity boost function
+        def apply_simple_scarcity_boost(players_df, drafted_team, round_num):
+            """Apply a simple position-based scarcity boost"""
+            boosted_df = players_df.copy()
+            
+            # Count how many of each position we already have
+            position_counts = {}
+            if isinstance(drafted_team, dict):
+                for position, player in drafted_team.items():
+                    if isinstance(player, dict) and player.get('position'):
+                        pos = player['position']
+                        position_counts[pos] = position_counts.get(pos, 0) + 1
+                    elif position == 'Bench' and isinstance(player, list):
+                        for bench_player in player:
+                            if isinstance(bench_player, dict) and bench_player.get('position'):
+                                pos = bench_player['position']
+                                position_counts[pos] = position_counts.get(pos, 0) + 1
+            elif isinstance(drafted_team, list):
+                for player in drafted_team:
+                    if isinstance(player, dict) and player.get('position'):
+                        pos = player['position']
+                        position_counts[pos] = position_counts.get(pos, 0) + 1
+            
+            # Define position needs (typical draft strategy)
+            position_targets = {'QB': 1, 'RB': 2, 'WR': 2, 'TE': 1, 'K': 1, 'DST': 1}
+            
+            # Calculate scarcity boost for each player
+            scarcity_boosts = []
+            for _, player in boosted_df.iterrows():
+                pos = player['position']
+                have_count = position_counts.get(pos, 0)
+                target_count = position_targets.get(pos, 1)
+                
+                # Boost if we need more of this position
+                if have_count < target_count:
+                    # Higher boost for urgent needs
+                    scarcity_boost = 1.5 if have_count == 0 else 1.2
+                else:
+                    scarcity_boost = 0.8  # Lower priority if we have enough
+                
+                scarcity_boosts.append(scarcity_boost)
+            
+            boosted_df['scarcity_boost'] = scarcity_boosts
+            return boosted_df
         
+        # Use the NEW PROPER AI model (no data leakage)
         try:
             from proper_model_adapter import predict_players, is_model_available
+            
             if is_model_available():
-                ai_df = predict_players(model_pool)
-                if ai_df is None or ai_df.empty:
-                    raise RuntimeError('AI returned no results')
-                ranked = ai_df.sort_values('ai_prediction', ascending=False)
+                print("🤖 Using PROPER AI model with no data leakage")
+                # Get AI predictions for available players
+                ai_results = predict_players(available_df)
+                
+                if ai_results is not None:
+                    # Apply scarcity boost to AI predictions
+                    enhanced_suggestions = apply_simple_scarcity_boost(ai_results, our_team, current_round)
+                    
+                    # Calculate boosted score using AI predictions
+                    enhanced_suggestions['boosted_score'] = (
+                        enhanced_suggestions['ai_prediction'] * enhanced_suggestions['scarcity_boost']
+                    )
+                    
+                    # Sort by boosted AI scores
+                    enhanced_suggestions = enhanced_suggestions.sort_values('boosted_score', ascending=False)
+                    print(f"✅ Using PROPER AI × Scarcity for {len(enhanced_suggestions)} players")
+                else:
+                    print("❌ AI prediction failed, using scarcity-only")
+                    enhanced_suggestions = apply_simple_scarcity_boost(available_df, our_team, current_round)
+                    enhanced_suggestions['boosted_score'] = (
+                        enhanced_suggestions['projected_points'] * enhanced_suggestions['scarcity_boost']
+                    )
+                    enhanced_suggestions = enhanced_suggestions.sort_values('boosted_score', ascending=False)
             else:
-                raise RuntimeError('Model unavailable')
+                print("❌ Proper AI model not available, using scarcity-based sorting")
+                enhanced_suggestions = apply_simple_scarcity_boost(available_df, our_team, current_round)
+                enhanced_suggestions['boosted_score'] = (
+                    enhanced_suggestions['projected_points'] * enhanced_suggestions['scarcity_boost']
+                )
+                enhanced_suggestions = enhanced_suggestions.sort_values('boosted_score', ascending=False)
         except Exception as e:
-            print(f"❌ AI unavailable, fallback to projected_points: {e}")
-            ranked = model_pool.sort_values('projected_points', ascending=False)
+            print(f"❌ Error with AI model: {e}")
+            enhanced_suggestions = apply_simple_scarcity_boost(available_df, our_team, current_round)
+            enhanced_suggestions['boosted_score'] = (
+                enhanced_suggestions['projected_points'] * enhanced_suggestions['scarcity_boost']
+            )
+            enhanced_suggestions = enhanced_suggestions.sort_values('boosted_score', ascending=False)
         
-        # Format for frontend (top 8)
+        # Apply Value Over Replacement (VOR)
+        try:
+            pos_replacement_index = {'QB': 12, 'RB': 28, 'WR': 28, 'TE': 12}
+            replacement_points = {}
+            for pos, k in pos_replacement_index.items():
+                pos_df = enhanced_suggestions[enhanced_suggestions['position'] == pos].sort_values('boosted_score', ascending=False)
+                if len(pos_df) >= k:
+                    rep = pos_df['boosted_score'].iloc[k - 1]
+                elif len(pos_df) > 0:
+                    rep = pos_df['boosted_score'].iloc[-1]
+                else:
+                    rep = 0.0
+                replacement_points[pos] = float(rep)
+ 
+            vor_values = []
+            final_scores = []
+            for _, row in enhanced_suggestions.iterrows():
+                pos = row.get('position', '')
+                boosted = row.get('boosted_score', 0.0)
+                rep = replacement_points.get(pos, 0.0)
+                vor = float(boosted) - float(rep)
+                final_score = 0.7 * vor + 0.3 * float(boosted)
+                vor_values.append(vor)
+                final_scores.append(final_score)
+ 
+            enhanced_suggestions = enhanced_suggestions.copy()
+            enhanced_suggestions['vor'] = vor_values
+            enhanced_suggestions['final_score'] = final_scores
+            enhanced_suggestions = enhanced_suggestions.sort_values('final_score', ascending=False)
+        except Exception:
+            pass
+ 
+        # Format for frontend
         formatted_suggestions = []
-        for _, suggestion in ranked.head(8).iterrows():
+        for _, suggestion in enhanced_suggestions.head(8).iterrows():  # Top 8 picks
+            boosted_score = suggestion.get('boosted_score', suggestion.get('projected_points', 0))
+            scarcity_boost = suggestion.get('scarcity_boost', 1.0)
             ai_score = suggestion.get('ai_prediction', 0)
-            adp_val = suggestion.get('adp_rank', None)
-            if pd.isna(adp_val):
-                adp_val = None
-            proj_val = suggestion.get('projected_points', 0)
-            proj_val = 0.0 if pd.isna(proj_val) else float(proj_val)
-            ai_val = 0.0 if pd.isna(ai_score) else float(ai_score)
-            bye_val = suggestion.get('bye_week', None)
-            if pd.isna(bye_val):
-                bye_val = None
-            team_val = suggestion.get('team', '')
-            if pd.isna(team_val):
-                team_val = ''
-            pos_val = suggestion.get('position', '')
-            if pd.isna(pos_val):
-                pos_val = ''
-            name_val = suggestion.get('name', 'Unknown Player')
-            if pd.isna(name_val):
-                name_val = 'Unknown Player'
+            final_score = suggestion.get('final_score', boosted_score)
+ 
             formatted_suggestions.append({
-                'name': name_val,
-                'position': pos_val,
-                'adp_rank': adp_val,
-                'projected_points': proj_val,
-                'bye_week': bye_val,
-                'team': team_val,
-                'optimized_score': ai_val,
-                'ai_score': ai_val,
-                'scarcity_boost': 1.0
+                'name': suggestion['name'],
+                'position': suggestion['position'],
+                'adp_rank': suggestion.get('adp_rank', None),
+                'projected_points': float(suggestion['projected_points']) if not pd.isna(suggestion.get('projected_points', 0)) else 0.0,
+                'bye_week': suggestion.get('bye_week', 'Unknown'),
+                'team': suggestion.get('team', ''),
+                'optimized_score': float(final_score) if not pd.isna(final_score) else (float(boosted_score) if not pd.isna(boosted_score) else 0.0),
+                'ai_score': float(ai_score) if not pd.isna(ai_score) else 0.0,
+                'scarcity_boost': round(float(scarcity_boost), 2) if not pd.isna(scarcity_boost) else 1.0
             })
-        
+ 
         return jsonify(formatted_suggestions)
         
     except Exception as e:
@@ -474,6 +497,7 @@ def suggest():
             available_df = df[~df['name'].isin(drafted_names)] if 'drafted_names' in locals() else df
             top_picks = available_df.head(10)
             fallback_suggestions = []
+            
             for _, player in top_picks.iterrows():
                 fallback_suggestions.append({
                     'name': player['name'],
@@ -486,6 +510,7 @@ def suggest():
                     'ai_score': 0.0,
                     'scarcity_boost': 1.0
                 })
+            
             return jsonify(fallback_suggestions)
         except Exception as e2:
             print(f"❌ Even fallback failed: {e2}")
@@ -503,31 +528,26 @@ def search():
     if os.path.exists(STATE_FILE):
         with open(STATE_FILE, 'r') as f:
             state = json.load(f)
-            our_team = state.get('our_team', {})
+            our_team = state.get('our_team', [])
             opponent_team = state.get('opponent_team', [])
-            drafted_by_others = state.get('drafted_by_others', [])
             
-            # Collect from our team
-            for position, player in our_team.items():
-                if isinstance(player, dict) and player.get('name'):
-                    drafted_names.append(player['name'])
-                elif position == 'Bench' and isinstance(player, list):
-                    for bench_player in player:
-                        if isinstance(bench_player, dict) and bench_player.get('name'):
-                            drafted_names.append(bench_player['name'])
+            # Collect all drafted player names (simplified)
+            if isinstance(our_team, dict):
+                for position, player in our_team.items():
+                    if isinstance(player, dict) and player.get('name'):
+                        drafted_names.append(player['name'])
+                    elif position == 'Bench' and isinstance(player, list):
+                        for bench_player in player:
+                            if isinstance(bench_player, dict) and bench_player.get('name'):
+                                drafted_names.append(bench_player['name'])
             
-            # Collect from opponent team
-            for player in opponent_team:
-                if isinstance(player, dict) and player.get('name'):
-                    drafted_names.append(player['name'])
-            
-            # Collect from drafted_by_others
-            for player in drafted_by_others:
-                if isinstance(player, dict) and player.get('name'):
-                    drafted_names.append(player['name'])
+            if isinstance(opponent_team, list):
+                for player in opponent_team:
+                    if isinstance(player, dict) and player.get('name'):
+                        drafted_names.append(player['name'])
     
-    # Filter out drafted players using fuzzy matching
-    available_df = df[~df['name'].apply(lambda x: any(fuzzy_name_match(x, name) for name in drafted_names))].copy()
+    # Filter out drafted players
+    available_df = df[~df['name'].isin(drafted_names)]
     
     # Simple name search
     matches = available_df[available_df['name'].str.contains(query, case=False, na=False)]
@@ -553,7 +573,7 @@ def draft():
         if player_row.empty:
             return jsonify({'success': False, 'message': 'Player not found'})
         
-        actual_name = player_row.iloc[0]['name']
+        # Get player data
         player_dict = player_row.iloc[0].to_dict()
         # Convert any numpy/pandas types to native Python types
         for key, value in player_dict.items():
@@ -568,7 +588,7 @@ def draft():
             return jsonify({'success': False, 'message': 'No available roster spots'})
         
         # Remove from available
-        available_df = available_df[available_df['name'] != actual_name]
+        available_df = available_df[available_df['name'] != player_name]
         
         # Save state
         save_state(available_df, our_team, drafted_by_others, team_needs)
@@ -600,7 +620,7 @@ def mark_taken():
         if player_row.empty:
             return jsonify({'success': False, 'message': 'Player not found'})
         
-        actual_name = player_row.iloc[0]['name']
+        # Add to drafted by others
         player_dict = player_row.iloc[0].to_dict()
         # Convert any numpy/pandas types to native Python types
         for key, value in player_dict.items():
@@ -608,17 +628,10 @@ def mark_taken():
                 player_dict[key] = None
             elif hasattr(value, 'item'):  # numpy types
                 player_dict[key] = value.item()
-        
-        # Check if already marked using fuzzy matching
-        already_drafted = any(fuzzy_name_match(p.get('name', ''), player_name) for p in drafted_by_others if isinstance(p, dict) and p.get('name'))
-        if already_drafted:
-            return jsonify({'success': False, 'error': 'Player already marked as taken'})
-        
-        # Add to drafted_by_others (use the found player_data which has standardized name)
         drafted_by_others.append(player_dict)
         
         # Remove from available
-        available_df = available_df[available_df['name'] != actual_name]
+        available_df = available_df[available_df['name'] != player_name]
         
         # Save state
         save_state(available_df, our_team, drafted_by_others, team_needs)
