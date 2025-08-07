@@ -569,16 +569,14 @@ def suggest():
             enhanced_suggestions = enhanced_suggestions.copy()
             enhanced_suggestions['adp_baseline'] = adp_baseline
 
-            if current_round <= 1:
-                alpha = 0.55
-            elif current_round == 2:
-                alpha = 0.65
+            if current_round <= 2:
+                alpha = 0.90
             elif current_round == 3:
-                alpha = 0.75
-            elif current_round <= 6:
-                alpha = 0.82
-            else:
                 alpha = 0.88
+            elif current_round <= 6:
+                alpha = 0.86
+            else:
+                alpha = 0.90
 
             blended_scores = (
                 enhanced_suggestions['final_score'].astype(float) * alpha +
@@ -590,7 +588,7 @@ def suggest():
                 adp_min = adp_series.min(skipna=True)
                 adp_max = adp_series.max(skipna=True)
                 denom = (adp_max - adp_min) if pd.notna(adp_max) and pd.notna(adp_min) and (adp_max - adp_min) > 0 else 1.0
-                anchor_strength = 0.15 if current_round <= 2 else 0.08
+                anchor_strength = 0.00 if current_round <= 2 else 0.03
 
                 def anchor_multiplier(adp_val: float) -> float:
                     if pd.isna(adp_val):
