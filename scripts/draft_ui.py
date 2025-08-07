@@ -570,7 +570,7 @@ def suggest():
             enhanced_suggestions['adp_baseline'] = adp_baseline
 
             if current_round <= 2:
-                alpha = 0.90
+                alpha = 0.95
             elif current_round == 3:
                 alpha = 0.88
             elif current_round <= 6:
@@ -616,9 +616,14 @@ def suggest():
                     enhanced_suggestions['rank_delta_norm'] = (
                         (enhanced_suggestions['adp_rank_num'] - enhanced_suggestions['ai_rank']) / n
                     ).fillna(0.0)
-                    gamma = 0.25
-                    boost = 1.0 + gamma * enhanced_suggestions['rank_delta_norm']
-                    boost = boost.clip(lower=0.90, upper=1.12)
+                    gamma = 0.50
+                    base_boost = 1.0 + gamma * enhanced_suggestions['rank_delta_norm']
+                    delta = (enhanced_suggestions['adp_rank_num'] - enhanced_suggestions['ai_rank']).fillna(0.0)
+                    extra = pd.Series(1.0, index=delta.index)
+                    extra = extra.where(~(delta >= 8), 1.12)
+                    extra = extra.where(~(delta >= 12), 1.18)
+                    boost = (base_boost * extra)
+                    boost = boost.clip(lower=0.88, upper=1.20)
                     enhanced_suggestions['final_score'] = enhanced_suggestions['final_score'].astype(float) * boost.astype(float)
                     enhanced_suggestions = enhanced_suggestions.sort_values('final_score', ascending=False)
         except Exception:
