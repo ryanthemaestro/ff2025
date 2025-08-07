@@ -279,6 +279,7 @@ def suggest():
                 state = json.load(f)
                 our_team = state.get('our_team', [])
                 opponent_team = state.get('opponent_team', [])
+                drafted_by_others = state.get('drafted_by_others', [])
                 
                 # Collect all drafted player names
                 if isinstance(our_team, dict):
@@ -297,6 +298,11 @@ def suggest():
                 
                 if isinstance(opponent_team, list):
                     for player in opponent_team:
+                        if isinstance(player, dict) and player.get('name'):
+                            drafted_names.append(player['name'])
+
+                if isinstance(drafted_by_others, list):
+                    for player in drafted_by_others:
                         if isinstance(player, dict) and player.get('name'):
                             drafted_names.append(player['name'])
         
@@ -712,15 +718,14 @@ def search():
     if not query:
         return jsonify([])
     
-    # Load draft state to exclude drafted players
     drafted_names = []
     if os.path.exists(STATE_FILE):
         with open(STATE_FILE, 'r') as f:
             state = json.load(f)
             our_team = state.get('our_team', [])
             opponent_team = state.get('opponent_team', [])
+            drafted_by_others = state.get('drafted_by_others', [])
             
-            # Collect all drafted player names (simplified)
             if isinstance(our_team, dict):
                 for position, player in our_team.items():
                     if isinstance(player, dict) and player.get('name'):
@@ -734,8 +739,12 @@ def search():
                 for player in opponent_team:
                     if isinstance(player, dict) and player.get('name'):
                         drafted_names.append(player['name'])
-    
-    # Filter out drafted players
+
+            if isinstance(drafted_by_others, list):
+                for player in drafted_by_others:
+                    if isinstance(player, dict) and player.get('name'):
+                        drafted_names.append(player['name'])
+
     available_df = df[~df['name'].isin(drafted_names)]
     
     # Simple name search
@@ -795,39 +804,68 @@ def mark_taken():
     """Mark a player as taken by another team"""
     try:
         data = request.get_json()
-        if not data:
-            return jsonify({'success': False, 'message': 'No data provided'})
-        
         player_name = data.get('player')
+        
         if not player_name:
-            return jsonify({'success': False, 'message': 'No player name provided'})
+            return jsonify({'success': False, 'error': 'No player specified'})
         
-        available_df, our_team, drafted_by_others, team_needs = load_state()
+        player_data = None
+        player_matches = df[df['name'].str.lower() == str(player_name).lower()]
+        if not player_matches.empty:
+            player_data = player_matches.iloc[0].to_dict()
+        else:
+            rookie_matches = rookie_df[rookie_df['name'].str.lower() == str(player_name).lower()]
+            if not rookie_matches.empty:
+                player_data = rookie_matches.iloc[0].to_dict()
+         
+        if not player_data:
+            return jsonify({'success': False, 'error': 'Player not found'})
         
-        # Find the player (case-insensitive)
-        player_row = available_df[available_df['name'].str.lower() == player_name.lower()]
-        if player_row.empty:
-            return jsonify({'success': False, 'message': 'Player not found'})
+        if os.path.exists(STATE_FILE):
+            with open(STATE_FILE, 'r') as f:
+                state = json.load(f)
+        else:
+            # This part of the original code was not in the edit_specification,
+            # but it's needed to initialize state if the file doesn't exist.
+            # Assuming a default state or that load_state handles this.
+            # For now, let's assume load_state will handle it or it's a bug.
+            # Given the context, it's likely a bug in the original code's logic.
+            # For robustness, we'll initialize a minimal state if the file doesn't exist.
+            state = {
+                'available_df': df.to_json(orient='records'),
+                'our_team': {
+                    'QB': None,
+                    'RB1': None,
+                    'RB2': None,
+                    'WR1': None,
+                    'WR2': None,
+                    'TE': None,
+                    'FLEX': None,
+                    'K': None,
+                    'DST': None,
+                    'Bench': [None] * 6
+                },
+                'drafted_by_others': [],
+                'team_needs': {'QB': 1, 'RB': 2, 'WR': 2, 'TE': 1, 'K': 1, 'DST': 1}
+            }
+            with open(STATE_FILE, 'w') as f:
+                json.dump(state, f)
+
+        if not isinstance(state.get('drafted_by_others'), list):
+            state['drafted_by_others'] = []
         
-        # Add to drafted by others
-        player_dict = player_row.iloc[0].to_dict()
-        # Convert any numpy/pandas types to native Python types
-        for key, value in player_dict.items():
-            if pd.isna(value):
-                player_dict[key] = None
-            elif hasattr(value, 'item'):  # numpy types
-                player_dict[key] = value.item()
-        drafted_by_others.append(player_dict)
+        already_drafted = any(p.get('name') == player_name for p in state['drafted_by_others'] if isinstance(p, dict))
+        if not already_drafted:
+            state['drafted_by_others'].append(player_data)
         
-        # Remove from available
-        available_df = available_df[available_df['name'] != player_name]
+        with open(STATE_FILE, 'w') as f:
+            json.dump(state, f)
         
-        # Save state
-        save_state(available_df, our_team, drafted_by_others, team_needs)
-        
-        return jsonify({'success': True, 'message': f'Marked {player_name} as taken'})
+        return jsonify({'success': True, 'player': player_data})
+         
     except Exception as e:
-        return jsonify({'success': False, 'message': f'Error marking player as taken: {str(e)}'})
+        print(f"Mark taken error: {e}")
+        return jsonify({'success': False, 'error': str(e)})
 
 @app.route('/reset', methods=['POST'])
 def reset_draft():

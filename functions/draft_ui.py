@@ -714,6 +714,7 @@ def search():
             state = json.load(f)
             our_team = state.get('our_team', [])
             opponent_team = state.get('opponent_team', [])
+            drafted_by_others = state.get('drafted_by_others', [])
             
             # Collect all drafted player names (simplified)
             if isinstance(our_team, dict):
@@ -729,7 +730,12 @@ def search():
                 for player in opponent_team:
                     if isinstance(player, dict) and player.get('name'):
                         drafted_names.append(player['name'])
-    
+
+            if isinstance(drafted_by_others, list):
+                for player in drafted_by_others:
+                    if isinstance(player, dict) and player.get('name'):
+                        drafted_names.append(player['name'])
+
     # Filter out drafted players
     available_df = df[~df['name'].isin(drafted_names)]
     
@@ -825,20 +831,24 @@ def mark_taken():
         
         # Find player data
         player_data = None
-        player_matches = df[df['name'].str.lower() == player_name.lower()]
+        player_matches = df[df['name'].str.lower() == str(player_name).lower()]
         if not player_matches.empty:
             player_data = player_matches.iloc[0].to_dict()
         else:
-            rookie_matches = rookie_df[rookie_df['name'].str.lower() == player_name.lower()]
+            rookie_matches = rookie_df[rookie_df['name'].str.lower() == str(player_name).lower()]
             if not rookie_matches.empty:
                 player_data = rookie_matches.iloc[0].to_dict()
         
         if not player_data:
             return jsonify({'success': False, 'error': 'Player not found'})
         
-        # Load state and add to drafted_by_others
-        state = load_state()
-        if 'drafted_by_others' not in state:
+        # Load state dict and add to drafted_by_others
+        if os.path.exists(STATE_FILE):
+            with open(STATE_FILE, 'r') as f:
+                state = json.load(f)
+        else:
+            state = init_state()
+        if not isinstance(state.get('drafted_by_others'), list):
             state['drafted_by_others'] = []
         
         # Check if already marked
