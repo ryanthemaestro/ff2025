@@ -14,6 +14,8 @@ import numpy as np
 import json
 import os
 from scripts.injury_tracker import get_current_injury_data, add_injury_status_to_dataframe
+import re
+from difflib import SequenceMatcher
 
 app = Flask(__name__, template_folder='../static')
 
@@ -228,6 +230,42 @@ def index():
     state = load_state()
     return render_template('index.html', state=state)
 
+def fuzzy_name_match(name1, name2, threshold=0.8):
+    """Fuzzy match for abbreviated vs full names"""
+    # Normalize names
+    name1 = str(name1).lower().strip()
+    name2 = str(name2).lower().strip()
+    
+    # Exact match
+    if name1 == name2:
+        return True
+    
+    # Handle abbreviations like "J.Chase" vs "Ja'Marr Chase"
+    # Split into parts and match initials
+    parts1 = re.findall(r'[a-zA-Z]+', name1)
+    parts2 = re.findall(r'[a-zA-Z]+', name2)
+    
+    if len(parts1) == len(parts2):
+        # Check if initials match
+        initials1 = [part[0] for part in parts1]
+        initials2 = [part[0] for part in parts2]
+        if initials1 == initials2:
+            # Check if last names match
+            if parts1[-1] == parts2[-1]:
+                return True
+    
+    # Use fuzzy matching as fallback
+    similarity = SequenceMatcher(None, name1, name2).ratio()
+    return similarity >= threshold
+
+# Update the filtering logic in suggest() to use fuzzy matching
+def is_player_drafted(player_name, drafted_names):
+    """Check if player is drafted using fuzzy matching"""
+    for drafted_name in drafted_names:
+        if fuzzy_name_match(player_name, drafted_name):
+            return True
+    return False
+
 @app.route('/suggest')
 def suggest():
     """Suggest draft picks using our proper AI model"""
@@ -251,35 +289,30 @@ def suggest():
                 drafted_by_others = state.get('drafted_by_others', [])
                 
                 # Collect all drafted player names from all sources
-                if isinstance(our_team, dict):
-                    for position, player in our_team.items():
-                        if isinstance(player, dict) and player.get('name'):
-                            drafted_names.append(player['name'])
-                        # Handle bench (list of players)
-                        elif position == 'Bench' and isinstance(player, list):
-                            for bench_player in player:
-                                if isinstance(bench_player, dict) and bench_player.get('name'):
-                                    drafted_names.append(bench_player['name'])
-                elif isinstance(our_team, list):
-                    for player in our_team:
-                        if isinstance(player, dict) and player.get('name'):
-                            drafted_names.append(player['name'])
+                def extract_names(team_data):
+                    names = []
+                    if isinstance(team_data, dict):
+                        for position, player in team_data.items():
+                            if isinstance(player, dict) and player.get('name'):
+                                names.append(player['name'])
+                            elif position == 'Bench' and isinstance(player, list):
+                                for bench_player in player:
+                                    if isinstance(bench_player, dict) and bench_player.get('name'):
+                                        names.append(bench_player['name'])
+                    elif isinstance(team_data, list):
+                        for player in team_data:
+                            if isinstance(player, dict) and player.get('name'):
+                                names.append(player['name'])
+                    return names
                 
-                if isinstance(opponent_team, list):
-                    for player in opponent_team:
-                        if isinstance(player, dict) and player.get('name'):
-                            drafted_names.append(player['name'])
-                
-                # Add players marked as taken by others
-                if isinstance(drafted_by_others, list):
-                    for player in drafted_by_others:
-                        if isinstance(player, dict) and player.get('name'):
-                            drafted_names.append(player['name'])
+                drafted_names.extend(extract_names(our_team))
+                drafted_names.extend(extract_names(opponent_team))
+                drafted_names.extend(extract_names(drafted_by_others))
         
-        print(f"🚫 Excluding {len(drafted_names)} drafted players from AI recommendations: {drafted_names}")
+        print(f"🚫 Excluding {len(drafted_names)} drafted players from AI recommendations")
         
-        # Filter out drafted players from ADP data  
-        available_df = df[~df['name'].isin(drafted_names)].copy()
+        # Filter out drafted players using fuzzy matching
+        available_df = df[~df['name'].apply(lambda x: any(fuzzy_name_match(x, name) for name in drafted_names))].copy()
         
         # Handle filtering requests
         if all_available:
@@ -288,25 +321,21 @@ def suggest():
                 sorted_df = available_df.sort_values('adp_rank', ascending=True, na_position='last')
             else:
                 sorted_df = available_df
-            result_df = sorted_df.head(100)  # Limit for performance
+            result_df = sorted_df.head(100)
             cleaned_df = clean_nan_for_json(result_df)
             return jsonify(cleaned_df.to_dict('records'))
         
         elif position_filter == 'ROOKIE':
             print("🆕 Filtering for ROOKIE players only")
-            # Use the globally loaded rookie_df
             try:
-                # Filter out any drafted rookies
-                available_rookies = rookie_df[~rookie_df['name'].isin(drafted_names)].copy()
+                # Filter out any drafted rookies using fuzzy matching
+                available_rookies = rookie_df[~rookie_df['name'].apply(lambda x: any(fuzzy_name_match(x, name) for name in drafted_names))].copy()
                 
-                # Sort by rookie ADP rank (already loaded properly)
                 available_rookies = available_rookies.sort_values('adp_rank', ascending=True)
-                
-                # Take top 50 rookies
                 rookies = available_rookies.head(50)
                 cleaned_rookies = clean_nan_for_json(rookies)
                 
-                print(f"📊 Returning {len(rookies)} available rookies (out of {len(rookie_df)} total)")
+                print(f"📊 Returning {len(rookies)} available rookies")
                 return jsonify(cleaned_rookies.to_dict('records'))
             except Exception as e:
                 print(f"❌ Error filtering rookies: {e}")
@@ -599,15 +628,21 @@ def mark_taken():
         if not player_name:
             return jsonify({'success': False, 'error': 'No player specified'})
         
-        # Find player data
+        # Find player data using fuzzy matching
         player_data = None
-        player_matches = df[df['name'].str.lower() == player_name.lower()]
-        if not player_matches.empty:
-            player_data = player_matches.iloc[0].to_dict()
-        else:
-            rookie_matches = rookie_df[rookie_df['name'].str.lower() == player_name.lower()]
-            if not rookie_matches.empty:
-                player_data = rookie_matches.iloc[0].to_dict()
+        
+        # Check main dataframe
+        for idx, row in df.iterrows():
+            if fuzzy_name_match(row['name'], player_name):
+                player_data = row.to_dict()
+                break
+        
+        # Check rookie dataframe if not found
+        if not player_data:
+            for idx, row in rookie_df.iterrows():
+                if fuzzy_name_match(row['name'], player_name):
+                    player_data = row.to_dict()
+                    break
         
         if not player_data:
             return jsonify({'success': False, 'error': 'Player not found'})
@@ -617,8 +652,13 @@ def mark_taken():
         if 'drafted_by_others' not in state:
             state['drafted_by_others'] = []
         
-        # Check if already marked
-        already_drafted = any(p.get('name') == player_name for p in state['drafted_by_others'] if isinstance(p, dict))
+        # Check if already marked using fuzzy matching
+        already_drafted = False
+        for existing_player in state['drafted_by_others']:
+            if isinstance(existing_player, dict) and fuzzy_name_match(existing_player.get('name', ''), player_name):
+                already_drafted = True
+                break
+        
         if not already_drafted:
             state['drafted_by_others'].append(player_data)
         
