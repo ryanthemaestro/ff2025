@@ -517,26 +517,31 @@ def search():
     if os.path.exists(STATE_FILE):
         with open(STATE_FILE, 'r') as f:
             state = json.load(f)
-            our_team = state.get('our_team', [])
+            our_team = state.get('our_team', {})
             opponent_team = state.get('opponent_team', [])
+            drafted_by_others = state.get('drafted_by_others', [])
             
-            # Collect all drafted player names (simplified)
-            if isinstance(our_team, dict):
-                for position, player in our_team.items():
-                    if isinstance(player, dict) and player.get('name'):
-                        drafted_names.append(player['name'])
-                    elif position == 'Bench' and isinstance(player, list):
-                        for bench_player in player:
-                            if isinstance(bench_player, dict) and bench_player.get('name'):
-                                drafted_names.append(bench_player['name'])
+            # Collect from our team
+            for position, player in our_team.items():
+                if isinstance(player, dict) and player.get('name'):
+                    drafted_names.append(player['name'])
+                elif position == 'Bench' and isinstance(player, list):
+                    for bench_player in player:
+                        if isinstance(bench_player, dict) and bench_player.get('name'):
+                            drafted_names.append(bench_player['name'])
             
-            if isinstance(opponent_team, list):
-                for player in opponent_team:
-                    if isinstance(player, dict) and player.get('name'):
-                        drafted_names.append(player['name'])
+            # Collect from opponent team
+            for player in opponent_team:
+                if isinstance(player, dict) and player.get('name'):
+                    drafted_names.append(player['name'])
+            
+            # Collect from drafted_by_others
+            for player in drafted_by_others:
+                if isinstance(player, dict) and player.get('name'):
+                    drafted_names.append(player['name'])
     
-    # Filter out drafted players
-    available_df = df[~df['name'].isin(drafted_names)]
+    # Filter out drafted players using fuzzy matching
+    available_df = df[~df['name'].apply(lambda x: any(fuzzy_name_match(x, name) for name in drafted_names))].copy()
     
     # Simple name search
     matches = available_df[available_df['name'].str.contains(query, case=False, na=False)]
