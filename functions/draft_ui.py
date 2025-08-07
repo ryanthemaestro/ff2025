@@ -542,6 +542,58 @@ def suggest():
         except Exception as _:
             pass
 
+        # Blend AI-driven score with ADP baseline; add early-round ADP anchoring
+        try:
+            # ADP baseline using projected_points × scarcity_boost
+            adp_baseline = []
+            for _, row in enhanced_suggestions.iterrows():
+                proj = float(row.get('projected_points', 0.0) or 0.0)
+                sc = float(row.get('scarcity_boost', 1.0) or 1.0)
+                adp_baseline.append(proj * sc)
+
+            enhanced_suggestions = enhanced_suggestions.copy()
+            enhanced_suggestions['adp_baseline'] = adp_baseline
+
+            # Dynamic blend weight by round (AI heavier later)
+            if current_round <= 1:
+                alpha = 0.55
+            elif current_round == 2:
+                alpha = 0.65
+            elif current_round == 3:
+                alpha = 0.75
+            elif current_round <= 6:
+                alpha = 0.82
+            else:
+                alpha = 0.88
+
+            blended_scores = (
+                enhanced_suggestions['final_score'].astype(float) * alpha +
+                enhanced_suggestions['adp_baseline'].astype(float) * (1.0 - alpha)
+            )
+
+            # Early-round ADP anchoring multiplier
+            if current_round <= 3 and 'adp_rank' in enhanced_suggestions.columns:
+                adp_series = enhanced_suggestions['adp_rank'].astype(float)
+                adp_min = adp_series.min(skipna=True)
+                adp_max = adp_series.max(skipna=True)
+                denom = (adp_max - adp_min) if pd.notna(adp_max) and pd.notna(adp_min) and (adp_max - adp_min) > 0 else 1.0
+                anchor_strength = 0.15 if current_round <= 2 else 0.08
+
+                def anchor_multiplier(adp_val: float) -> float:
+                    if pd.isna(adp_val):
+                        return 1.0
+                    norm = (float(adp_val) - float(adp_min)) / denom
+                    return 1.0 + anchor_strength * (1.0 - max(0.0, min(1.0, norm)))
+
+                multipliers = enhanced_suggestions['adp_rank'].apply(anchor_multiplier).astype(float)
+                blended_scores = blended_scores * multipliers
+
+            enhanced_suggestions['final_score'] = blended_scores
+            enhanced_suggestions['blend_alpha'] = alpha
+            enhanced_suggestions = enhanced_suggestions.sort_values('final_score', ascending=False)
+        except Exception as _:
+            pass
+
         # Format for frontend
         formatted_suggestions = []
         for _, suggestion in enhanced_suggestions.head(8).iterrows():  # Top 8 picks
