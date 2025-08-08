@@ -759,11 +759,9 @@
                     <!-- Starting Lineup -->
                     <div class="starting-lineup">
                         <div class="section-title">Starting Lineup</div>
-                        {% set positions = ['QB', 'RB1', 'RB2', 'WR1', 'WR2', 'TE', 'FLEX', 'K', 'DST'] %}
-                        {% for position in positions %}
-                        {% set player_data = team_with_byes.get(position) if team_with_byes else None %}
+                        {% for slot, player_data in team_with_byes.items() if slot != 'Bench' %}
                         <div class="team-row {{ 'filled' if player_data else '' }}">
-                            <div class="position-label">{{ position }}</div>
+                            <div class="position-label">{{ slot }}</div>
                             <div class="player-info">
                                 {% if player_data %}
                                     <div class="player-name">{{ player_data.name }}</div>
@@ -782,8 +780,9 @@
                     <!-- Bench -->
                     <div class="bench-section">
                         <div class="section-title">Bench</div>
-                        {% for i in range(6) %}
-                        {% set bench_player = team_with_byes.Bench[i] if team_with_byes and team_with_byes.Bench else None %}
+                        {% set bench_list = team_with_byes.Bench if team_with_byes and team_with_byes.Bench else [] %}
+                        {% for i in range(bench_list|length) %}
+                        {% set bench_player = bench_list[i] %}
                         <div class="team-row {{ 'filled' if bench_player else '' }}">
                             <div class="position-label">B{{ i+1 }}</div>
                             <div class="player-info">
