@@ -756,12 +756,14 @@ def draft():
     """Draft a player"""
     try:
         if request.method == 'OPTIONS':
+            print("[OPTIONS] /draft preflight")
             return ('', 204)
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
+        print(f"[POST] /draft payload: {data}")
         player_name = data.get('player')
         
         if not player_name:
-            return jsonify({'success': False, 'error': 'No player specified'})
+            return make_response(jsonify({'success': False, 'error': 'No player specified'}), 200)
         
         # Find player in either main df or rookie_df
         player_data = None
@@ -777,7 +779,7 @@ def draft():
                 player_data = rookie_matches.iloc[0].to_dict()
         
         if not player_data:
-            return jsonify({'success': False, 'error': 'Player not found'})
+            return make_response(jsonify({'success': False, 'error': 'Player not found'}), 200)
         
         # Load current state
         state = load_state()
@@ -816,29 +818,31 @@ def draft():
                     break
         
         if not placed:
-            return jsonify({'success': False, 'error': 'No available roster spots'})
+            return make_response(jsonify({'success': False, 'error': 'No available roster spots'}), 200)
         
         # Save state
         with open(STATE_FILE, 'w') as f:
             json.dump(state, f)
-        
-        return jsonify({'success': True, 'player': player_data})
+        print(f"[OK] Drafted: {player_name}")
+        return make_response(jsonify({'success': True, 'player': player_data}), 200)
         
     except Exception as e:
         print(f"Draft error: {e}")
-        return jsonify({'success': False, 'error': str(e)})
+        return make_response(jsonify({'success': False, 'error': str(e)}), 200)
 
 @app.route('/mark_taken', methods=['POST', 'OPTIONS'])
 def mark_taken():
     """Mark a player as taken by another team"""
     try:
         if request.method == 'OPTIONS':
+            print("[OPTIONS] /mark_taken preflight")
             return ('', 204)
-        data = request.get_json()
+        data = request.get_json(silent=True) or {}
+        print(f"[POST] /mark_taken payload: {data}")
         player_name = data.get('player')
         
         if not player_name:
-            return jsonify({'success': False, 'error': 'No player specified'})
+            return make_response(jsonify({'success': False, 'error': 'No player specified'}), 200)
         
         # Find player data
         player_data = None
@@ -851,7 +855,7 @@ def mark_taken():
                 player_data = rookie_matches.iloc[0].to_dict()
         
         if not player_data:
-            return jsonify({'success': False, 'error': 'Player not found'})
+            return make_response(jsonify({'success': False, 'error': 'Player not found'}), 200)
         
         # Load state dict and add to drafted_by_others
         if os.path.exists(STATE_FILE):
@@ -870,12 +874,12 @@ def mark_taken():
         # Save state
         with open(STATE_FILE, 'w') as f:
             json.dump(state, f)
-        
-        return jsonify({'success': True, 'player': player_data})
+        print(f"[OK] Marked taken: {player_name}")
+        return make_response(jsonify({'success': True, 'player': player_data}), 200)
         
     except Exception as e:
         print(f"Mark taken error: {e}")
-        return jsonify({'success': False, 'error': str(e)})
+        return make_response(jsonify({'success': False, 'error': str(e)}), 200)
 
 @app.route('/reset', methods=['POST', 'OPTIONS'])
 def reset():
