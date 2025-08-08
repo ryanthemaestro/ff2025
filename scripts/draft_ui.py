@@ -1085,9 +1085,6 @@ def assign_player_to_lineup(our_team, player_dict, roster_config=None):
     # If bench is full, return None (shouldn't happen in normal draft)
     return None
 
-if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
-
 # League settings endpoint for local dev
 @app.route('/league_settings', methods=['GET', 'POST'])
 def league_settings_local():
@@ -1132,3 +1129,6 @@ def league_settings_local():
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5000)
