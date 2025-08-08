@@ -20,6 +20,113 @@ app = Flask(__name__, template_folder='../static')
 # Constants
 STATE_FILE = 'draft_state.json'
 
+# Default roster configuration (can be changed from the UI)
+DEFAULT_ROSTER_CONFIG = {
+    'num_teams': 10,
+    'use_positions': True,
+    'QB': 1,
+    'RB': 2,
+    'WR': 2,
+    'TE': 1,
+    'FLEX': 1,
+    'K': 1,
+    'DST': 1,
+    'Bench': 6,
+    # When use_positions is False, we use generic STARTER slots
+    'STARTERS': 8
+}
+
+def build_team_from_config(config: dict) -> dict:
+    """Create an empty team structure based on roster config."""
+    cfg = {**DEFAULT_ROSTER_CONFIG, **(config or {})}
+    team: dict = {}
+    if cfg.get('use_positions', True):
+        # Positioned lineup
+        if cfg['QB'] >= 1:
+            team['QB'] = None
+        for i in range(1, cfg['RB'] + 1):
+            team[f'RB{i}'] = None
+        for i in range(1, cfg['WR'] + 1):
+            team[f'WR{i}'] = None
+        if cfg['TE'] >= 1:
+            team['TE'] = None
+        # FLEX slots
+        if cfg['FLEX'] == 1:
+            team['FLEX'] = None
+        elif cfg['FLEX'] > 1:
+            for i in range(1, cfg['FLEX'] + 1):
+                team[f'FLEX{i}'] = None
+        # K and DST
+        if cfg['K'] >= 1:
+            team['K'] = None
+        if cfg['DST'] >= 1:
+            team['DST'] = None
+    else:
+        # Positionless lineup (best ball style): STARTER slots
+        starters = max(1, int(cfg.get('STARTERS', 8)))
+        for i in range(1, starters + 1):
+            team[f'STARTER{i}'] = None
+
+    # Bench
+    team['Bench'] = [None] * int(cfg.get('Bench', 6))
+    return team
+
+def build_position_slot_map(config: dict) -> dict:
+    """Return mapping of position -> list of allowed slots to place that position."""
+    cfg = {**DEFAULT_ROSTER_CONFIG, **(config or {})}
+    slot_map: dict = {
+        'QB': [], 'RB': [], 'WR': [], 'TE': [], 'K': [], 'DST': []
+    }
+    # Dedicated slots
+    if cfg.get('use_positions', True):
+        if cfg['QB'] >= 1:
+            slot_map['QB'].append('QB')
+        for i in range(1, cfg['RB'] + 1):
+            slot_map['RB'].append(f'RB{i}')
+        for i in range(1, cfg['WR'] + 1):
+            slot_map['WR'].append(f'WR{i}')
+        if cfg['TE'] >= 1:
+            slot_map['TE'].append('TE')
+        if cfg['K'] >= 1:
+            slot_map['K'].append('K')
+        if cfg['DST'] >= 1:
+            slot_map['DST'].append('DST')
+        # FLEX is eligible for RB/WR/TE
+        flex_slots: list = []
+        if cfg['FLEX'] == 1:
+            flex_slots = ['FLEX']
+        elif cfg['FLEX'] > 1:
+            flex_slots = [f'FLEX{i}'] if cfg['FLEX'] == 1 else [f'FLEX{i}' for i in range(1, cfg['FLEX'] + 1)]
+        for s in flex_slots:
+            slot_map['RB'].append(s)
+            slot_map['WR'].append(s)
+            slot_map['TE'].append(s)
+    # STARTER slots (positionless) are eligible for any position
+    starter_slots: list = []
+    if not cfg.get('use_positions', True):
+        starter_slots = [f'STARTER{i}' for i in range(1, int(cfg.get('STARTERS', 8)) + 1)]
+    if starter_slots:
+        for p in slot_map.keys():
+            slot_map[p].extend(starter_slots)
+    return slot_map
+
+def build_position_targets_from_config(config: dict) -> dict:
+    """Return desired counts for positional targets based on roster config."""
+    cfg = {**DEFAULT_ROSTER_CONFIG, **(config or {})}
+    if cfg.get('use_positions', True):
+        return {
+            'QB': cfg.get('QB', 1),
+            'RB': cfg.get('RB', 2),
+            'WR': cfg.get('WR', 2),
+            'TE': cfg.get('TE', 1),
+            'K': cfg.get('K', 1),
+            'DST': cfg.get('DST', 1)
+        }
+    # If positionless, softly target typical distribution
+    starters = int(cfg.get('STARTERS', 8))
+    # Simple heuristic split
+    return {'QB': 1, 'RB': max(2, starters // 3), 'WR': max(2, starters // 3), 'TE': 1, 'K': 1, 'DST': 1}
+
 def clean_nan_for_json(data):
     """Convert pandas objects to JSON-safe format"""
     if isinstance(data, pd.DataFrame):
@@ -192,14 +299,13 @@ except Exception as e:
 
 def init_state():
     """Initialize draft state"""
+    roster_config = DEFAULT_ROSTER_CONFIG.copy()
     state = {
-        'our_team': {
-            'QB': None, 'RB1': None, 'RB2': None, 'WR1': None, 'WR2': None,
-            'TE': None, 'FLEX': None, 'K': None, 'DST': None,
-            'Bench': [None] * 6
-        },
+        'roster_config': roster_config,
+        'num_teams': roster_config['num_teams'],
+        'our_team': build_team_from_config(roster_config),
         'drafted_by_others': [],
-        'team_needs': {'QB': 1, 'RB': 2, 'WR': 2, 'TE': 1, 'K': 1, 'DST': 1}
+        'team_needs': build_position_targets_from_config(roster_config)
     }
     
     with open(STATE_FILE, 'w') as f:
@@ -309,9 +415,15 @@ def suggest():
             cleaned_position = clean_nan_for_json(position_players)
             return jsonify(cleaned_position.to_dict('records'))
         
-        # Estimate current round
+        # Estimate current round using configured number of teams
         total_picks = len(drafted_names)
-        current_round = (total_picks // 10) + 1
+        try:
+            with open(STATE_FILE, 'r') as f:
+                _st = json.load(f)
+                num_teams = int(_st.get('num_teams', DEFAULT_ROSTER_CONFIG['num_teams']))
+        except Exception:
+            num_teams = DEFAULT_ROSTER_CONFIG['num_teams']
+        current_round = (total_picks // max(1, num_teams)) + 1
         print(f"📊 Estimated draft round: {current_round}")
         print("🎯 Returning AI recommendations")
         
@@ -338,8 +450,13 @@ def suggest():
                         pos = player['position']
                         position_counts[pos] = position_counts.get(pos, 0) + 1
             
-            # Define position needs (typical draft strategy)
-            position_targets = {'QB': 1, 'RB': 2, 'WR': 2, 'TE': 1, 'K': 1, 'DST': 1}
+            # Define position needs from roster configuration
+            try:
+                with open(STATE_FILE, 'r') as f:
+                    _st = json.load(f)
+                    position_targets = build_position_targets_from_config(_st.get('roster_config', {}))
+            except Exception:
+                position_targets = build_position_targets_from_config({})
             
             # Calculate scarcity boost for each player
             scarcity_boosts = []
@@ -784,28 +901,18 @@ def draft():
         # Load current state
         state = load_state()
         
-        # Try to add to starting lineup first
+        # Try to add to starting lineup first (dynamic by roster config)
         our_team = state['our_team']
         position = player_data['position']
-        
-        # Position priority mapping
-        position_slots = {
-            'QB': ['QB'],
-            'RB': ['RB1', 'RB2', 'FLEX'],
-            'WR': ['WR1', 'WR2', 'FLEX'],
-            'TE': ['TE', 'FLEX'],
-            'K': ['K'],
-            'DST': ['DST']
-        }
-        
-        # Find available slot
+        roster_config = state.get('roster_config', DEFAULT_ROSTER_CONFIG)
+        slot_map = build_position_slot_map(roster_config)
+        candidate_slots = slot_map.get(position, [])
         placed = False
-        if position in position_slots:
-            for slot in position_slots[position]:
-                if our_team.get(slot) is None:
-                    our_team[slot] = player_data
-                    placed = True
-                    break
+        for slot in candidate_slots:
+            if our_team.get(slot) is None:
+                our_team[slot] = player_data
+                placed = True
+                break
         
         # If no starting slot available, add to bench
         if not placed:
@@ -916,12 +1023,13 @@ def undo():
                 our_team['Bench'] = bench
                 break
         
-        # If bench is empty, check starting lineup
+        # If bench is empty, check starting lineup (dynamic order: reverse of keys excluding Bench)
         if last_player is None:
-            for position in ['FLEX', 'DST', 'K', 'TE', 'WR2', 'WR1', 'RB2', 'RB1', 'QB']:
-                if our_team.get(position) is not None:
-                    last_player = our_team[position]
-                    our_team[position] = None
+            start_slots = [k for k in our_team.keys() if k != 'Bench']
+            for slot in reversed(start_slots):
+                if our_team.get(slot) is not None:
+                    last_player = our_team[slot]
+                    our_team[slot] = None
                     break
         
         if last_player is None:
@@ -939,3 +1047,42 @@ def undo():
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000) 
+
+# League settings endpoints
+@app.route('/league_settings', methods=['GET', 'POST', 'OPTIONS'])
+def league_settings():
+    try:
+        if request.method == 'OPTIONS':
+            return ('', 204)
+        if request.method == 'GET':
+            st = load_state()
+            # load_state returns dict in this file
+            state = st if isinstance(st, dict) else {}
+            config = state.get('roster_config', DEFAULT_ROSTER_CONFIG)
+            return make_response(jsonify({'success': True, 'config': config, 'num_teams': state.get('num_teams', DEFAULT_ROSTER_CONFIG['num_teams'])}), 200)
+        # POST: update config
+        payload = request.get_json(silent=True) or {}
+        with open(STATE_FILE, 'r') as f:
+            state = json.load(f)
+        # Merge with defaults and coerce ints
+        new_cfg = {**state.get('roster_config', DEFAULT_ROSTER_CONFIG), **(payload.get('roster_config') or {})}
+        for key in ['QB','RB','WR','TE','FLEX','K','DST','Bench','STARTERS']:
+            if key in new_cfg:
+                try:
+                    new_cfg[key] = int(new_cfg[key])
+                except Exception:
+                    pass
+        use_positions = bool(new_cfg.get('use_positions', True))
+        new_cfg['use_positions'] = use_positions
+        num_teams = int(payload.get('num_teams', state.get('num_teams', DEFAULT_ROSTER_CONFIG['num_teams'])))
+        # Rebuild team based on new config (reset team layout)
+        state['roster_config'] = new_cfg
+        state['num_teams'] = num_teams
+        state['our_team'] = build_team_from_config(new_cfg)
+        state['team_needs'] = build_position_targets_from_config(new_cfg)
+        # Persist
+        with open(STATE_FILE, 'w') as f:
+            json.dump(state, f)
+        return make_response(jsonify({'success': True}), 200)
+    except Exception as e:
+        return make_response(jsonify({'success': False, 'error': str(e)}), 200)
