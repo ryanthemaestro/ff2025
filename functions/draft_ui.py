@@ -1045,9 +1045,6 @@ def undo():
         print(f"Undo error: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
-if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000) 
-
 # League settings endpoints
 @app.route('/league_settings', methods=['GET', 'POST', 'OPTIONS'])
 def league_settings():
@@ -1086,3 +1083,6 @@ def league_settings():
         return make_response(jsonify({'success': True}), 200)
     except Exception as e:
         return make_response(jsonify({'success': False, 'error': str(e)}), 200)
+
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5000)
