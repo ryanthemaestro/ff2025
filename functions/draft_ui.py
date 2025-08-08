@@ -744,10 +744,19 @@ def search():
     result = clean_nan_for_json(matches.head(20))
     return jsonify(result.to_dict('records'))
 
-@app.route('/draft', methods=['POST'])
+@app.after_request
+def add_cors_headers(response):
+    response.headers['Access-Control-Allow-Origin'] = '*'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+    response.headers['Access-Control-Allow-Methods'] = 'GET, POST, OPTIONS'
+    return response
+
+@app.route('/draft', methods=['POST', 'OPTIONS'])
 def draft():
     """Draft a player"""
     try:
+        if request.method == 'OPTIONS':
+            return ('', 204)
         data = request.get_json()
         player_name = data.get('player')
         
@@ -819,10 +828,12 @@ def draft():
         print(f"Draft error: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
-@app.route('/mark_taken', methods=['POST'])
+@app.route('/mark_taken', methods=['POST', 'OPTIONS'])
 def mark_taken():
     """Mark a player as taken by another team"""
     try:
+        if request.method == 'OPTIONS':
+            return ('', 204)
         data = request.get_json()
         player_name = data.get('player')
         
@@ -866,20 +877,24 @@ def mark_taken():
         print(f"Mark taken error: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
-@app.route('/reset', methods=['POST'])
+@app.route('/reset', methods=['POST', 'OPTIONS'])
 def reset():
     """Reset the draft"""
     try:
+        if request.method == 'OPTIONS':
+            return ('', 204)
         init_state()
         return jsonify({'success': True})
     except Exception as e:
         print(f"Reset error: {e}")
         return jsonify({'success': False, 'error': str(e)})
 
-@app.route('/undo', methods=['POST'])
+@app.route('/undo', methods=['POST', 'OPTIONS'])
 def undo():
     """Undo last draft action"""
     try:
+        if request.method == 'OPTIONS':
+            return ('', 204)
         state = load_state()
         
         # Find last drafted player and remove
