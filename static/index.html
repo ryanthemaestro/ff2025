@@ -493,6 +493,37 @@
         .modal-btn-success:hover {
             background: #2f855a;
         }
+
+        /* Settings grid styling */
+        .settings-grid {
+            display: grid;
+            grid-template-columns: repeat(4, minmax(120px, 1fr));
+            gap: 10px 14px;
+            align-items: center;
+        }
+        .settings-grid label {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+            background: #f8fafc;
+            border: 1px solid #e2e8f0;
+            padding: 6px 8px;
+            border-radius: 8px;
+            font-weight: 600;
+            color: #374151;
+        }
+        .settings-grid input[type="number"] {
+            width: 68px;
+            padding: 6px 8px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            background: white;
+            font-weight: 600;
+        }
+        @media (max-width: 768px) {
+            .settings-grid { grid-template-columns: repeat(2, minmax(140px, 1fr)); }
+        }
         
         .controls {
             display: flex;
@@ -1166,18 +1197,18 @@
                 </div>
                 <div class="modal-section">
                     <div class="modal-section-title">Roster Positions</div>
-                    <div class="modal-section-content" style="display:grid; grid-template-columns: repeat(4, max-content); gap:10px 16px; align-items:center;">
-                        <label>QB <input id="qb_input" type="number" min="0" value="1" style="width:64px;"/></label>
-                        <label>RB <input id="rb_input" type="number" min="0" value="2" style="width:64px;"/></label>
-                        <label>WR <input id="wr_input" type="number" min="0" value="2" style="width:64px;"/></label>
-                        <label>TE <input id="te_input" type="number" min="0" value="1" style="width:64px;"/></label>
-                        <label>FLEX <input id="flex_input" type="number" min="0" value="1" style="width:64px;"/></label>
-                        <label>K <input id="k_input" type="number" min="0" value="1" style="width:64px;"/></label>
-                        <label>DST <input id="dst_input" type="number" min="0" value="1" style="width:64px;"/></label>
-                        <label>Bench <input id="bench_input" type="number" min="0" value="6" style="width:64px;"/></label>
-                    </div>
-                </div>
-            `;
+                    <div class="modal-section-content settings-grid">
+                        <label>QB <input id="qb_input" type="number" step="1" min="0" value="1"/></label>
+                        <label>RB <input id="rb_input" type="number" step="1" min="0" value="2"/></label>
+                        <label>WR <input id="wr_input" type="number" step="1" min="0" value="2"/></label>
+                        <label>TE <input id="te_input" type="number" step="1" min="0" value="1"/></label>
+                        <label>FLEX <input id="flex_input" type="number" step="1" min="0" value="1"/></label>
+                        <label>K <input id="k_input" type="number" step="1" min="0" value="1"/></label>
+                        <label>DST <input id="dst_input" type="number" step="1" min="0" value="1"/></label>
+                        <label>Bench <input id="bench_input" type="number" step="1" min="0" value="6"/></label>
+                     </div>
+                 </div>
+             `;
             showCustomModal({
                 icon: '⚙️',
                 title: 'League Settings',
