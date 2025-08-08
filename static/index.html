@@ -940,6 +940,7 @@
         // Event listeners for draft and taken buttons
         $('#players').on('click', '.draft-btn', function() {
             var name = $(this).closest('li').data('name');
+            console.log('Draft clicked:', name);
             var $li = $(this).closest('li');
             $.ajax({
                 type: 'POST',
@@ -948,6 +949,7 @@
                 contentType: 'application/json',
                 dataType: 'json',
                 success: function(data) {
+                    console.log('Draft success:', data);
                     if (data.success) {
                         // Show bye week warning if exists
                         if (data.bye_warning) {
@@ -971,9 +973,9 @@
                             loadAutoSuggestions();
                             return;
                         }
-                        showErrorModal('Connection Error', (j.error || j.message) || 'Network error. Try again.');
+                        showErrorModal('Connection Error', (j.error || j.message) || ('Network error. Status ' + xhr.status));
                     } catch(e) {
-                        showErrorModal('Connection Error', 'Network error. Try again.');
+                        showErrorModal('Connection Error', 'Network error. Status ' + xhr.status);
                     }
                 }
             });
@@ -981,6 +983,7 @@
 
         $('#players').on('click', '.taken-btn', function() {
             var name = $(this).closest('li').data('name');
+            console.log('Taken clicked:', name);
             var $li = $(this).closest('li');
             $.ajax({
                 type: 'POST',
@@ -989,6 +992,7 @@
                 contentType: 'application/json',
                 dataType: 'json',
                 success: function(data) {
+                    console.log('Taken success:', data);
                     if (data.success) {
                         $li.remove();
                         loadAutoSuggestions();
@@ -1005,9 +1009,9 @@
                             loadAutoSuggestions();
                             return;
                         }
-                        showErrorModal('Connection Error', (j.error || j.message) || 'Network error. Try again.');
+                        showErrorModal('Connection Error', (j.error || j.message) || ('Network error. Status ' + xhr.status));
                     } catch(e) {
-                        showErrorModal('Connection Error', 'Network error. Try again.');
+                        showErrorModal('Connection Error', 'Network error. Status ' + xhr.status);
                     }
                 }
             });
