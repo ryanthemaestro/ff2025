@@ -960,9 +960,8 @@
                         } else if (data.bye_info) {
                             showByeWeekInfo(data.bye_info);
                         }
-                        // Remove from list and refresh suggestions
-                        $li.remove();
-                        loadAutoSuggestions();
+                        // Reload to update server-rendered team panel
+                        location.reload(true);
                     } else {
                         showErrorModal('Draft Failed', (data.error || data.message) || 'Could not draft player.');
                     }

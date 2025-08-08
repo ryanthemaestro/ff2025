@@ -959,8 +959,7 @@
                         } else if (data.bye_info) {
                             showByeWeekInfo(data.bye_info);
                         }
-                        $li.remove();
-                        loadAutoSuggestions();
+                        location.reload(true);
                     } else {
                         showErrorModal('Draft Failed', (data.error || data.message) || 'Could not draft player.');
                     }
