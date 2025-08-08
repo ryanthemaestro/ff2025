@@ -827,10 +827,6 @@ def mark_taken():
         else:
             # This part of the original code was not in the edit_specification,
             # but it's needed to initialize state if the file doesn't exist.
-            # Assuming a default state or that load_state handles this.
-            # For now, let's assume load_state will handle it or it's a bug.
-            # Given the context, it's likely a bug in the original code's logic.
-            # For robustness, we'll initialize a minimal state if the file doesn't exist.
             state = {
                 'available_df': df.to_json(orient='records'),
                 'our_team': {
@@ -861,7 +857,10 @@ def mark_taken():
         with open(STATE_FILE, 'w') as f:
             json.dump(state, f)
         
-        return jsonify({'success': True, 'player': player_data})
+        # Convert NaN to None for JSON safety
+        cleaned_player = {k: (None if pd.isna(v) else v) for k, v in player_data.items()}
+        
+        return jsonify({'success': True, 'player': cleaned_player})
          
     except Exception as e:
         print(f"Mark taken error: {e}")
