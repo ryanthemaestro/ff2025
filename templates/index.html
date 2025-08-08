@@ -937,49 +937,85 @@
             });
         }
         
-        // Event listeners for draft and taken buttons
-        $('#players').on('click', '.draft-btn', function() {
+        // Event listeners for draft and taken buttons (document-level to survive re-renders)
+        console.log('Binding Draft/Taken click handlers');
+        $(document).on('click', '.draft-btn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
             var name = $(this).closest('li').data('name');
+            console.log('Draft clicked:', name);
+            var $li = $(this).closest('li');
             $.ajax({
                 type: 'POST',
                 url: '/draft',
                 data: JSON.stringify({player: name}),
                 contentType: 'application/json',
+                dataType: 'json',
                 success: function(data) {
+                    console.log('Draft success:', data);
                     if (data.success) {
-                        // Show bye week warning if exists
                         if (data.bye_warning) {
                             showByeWeekWarning(data.bye_warning, name);
                         } else if (data.bye_info) {
                             showByeWeekInfo(data.bye_info);
                         }
-                        location.reload(true);  // Force reload from server
+                        $li.remove();
+                        loadAutoSuggestions();
                     } else {
-                        showErrorModal('Draft Failed', data.message || 'Could not draft player.');
+                        showErrorModal('Draft Failed', (data.error || data.message) || 'Could not draft player.');
                     }
                 },
                 error: function(xhr, status, error) {
-                    showErrorModal('Connection Error', 'Network error. Try again.');
+                    console.error('Draft AJAX error', status, xhr.status, xhr.responseText);
+                    try {
+                        var j = JSON.parse(xhr.responseText || '{}');
+                        if (j && j.success) {
+                            $li.remove();
+                            loadAutoSuggestions();
+                            return;
+                        }
+                        showErrorModal('Connection Error', (j.error || j.message) || ('Network error. Status ' + xhr.status));
+                    } catch(e) {
+                        showErrorModal('Connection Error', 'Network error. Status ' + xhr.status);
+                    }
                 }
             });
         });
 
-        $('#players').on('click', '.taken-btn', function() {
+        $(document).on('click', '.taken-btn', function(e) {
+            e.preventDefault();
+            e.stopPropagation();
             var name = $(this).closest('li').data('name');
+            console.log('Taken clicked:', name);
+            var $li = $(this).closest('li');
             $.ajax({
                 type: 'POST',
                 url: '/mark_taken',
                 data: JSON.stringify({player: name}),
                 contentType: 'application/json',
+                dataType: 'json',
                 success: function(data) {
+                    console.log('Taken success:', data);
                     if (data.success) {
-                        location.reload(true);  // Force reload from server
+                        $li.remove();
+                        loadAutoSuggestions();
                     } else {
-                        showErrorModal('Mark as Taken Failed', data.message || 'Could not mark as taken.');
+                        showErrorModal('Mark as Taken Failed', (data.error || data.message) || 'Could not mark as taken.');
                     }
                 },
                 error: function(xhr, status, error) {
-                    showErrorModal('Connection Error', 'Network error. Try again.');
+                    console.error('Taken AJAX error', status, xhr.status, xhr.responseText);
+                    try {
+                        var j = JSON.parse(xhr.responseText || '{}');
+                        if (j && j.success) {
+                            $li.remove();
+                            loadAutoSuggestions();
+                            return;
+                        }
+                        showErrorModal('Connection Error', (j.error || j.message) || ('Network error. Status ' + xhr.status));
+                    } catch(e) {
+                        showErrorModal('Connection Error', 'Network error. Status ' + xhr.status);
+                    }
                 }
             });
         });
