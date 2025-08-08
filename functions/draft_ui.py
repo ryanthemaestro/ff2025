@@ -824,7 +824,8 @@ def draft():
         with open(STATE_FILE, 'w') as f:
             json.dump(state, f)
         print(f"[OK] Drafted: {player_name}")
-        return make_response(jsonify({'success': True, 'player': player_data}), 200)
+        cleaned_player = clean_nan_for_json(player_data)
+        return make_response(jsonify({'success': True, 'player': cleaned_player}), 200)
         
     except Exception as e:
         print(f"Draft error: {e}")
@@ -875,7 +876,8 @@ def mark_taken():
         with open(STATE_FILE, 'w') as f:
             json.dump(state, f)
         print(f"[OK] Marked taken: {player_name}")
-        return make_response(jsonify({'success': True, 'player': player_data}), 200)
+        cleaned_player = clean_nan_for_json(player_data)
+        return make_response(jsonify({'success': True, 'player': cleaned_player}), 200)
         
     except Exception as e:
         print(f"Mark taken error: {e}")
