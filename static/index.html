@@ -1156,7 +1156,7 @@
 
         // Roster settings UI
         function openSettingsModal() {
-            // Simple form for now
+            // Cleaner grid layout; always positional lineup
             const body = `
                 <div class="modal-section">
                     <div class="modal-section-title">League Size</div>
@@ -1165,22 +1165,16 @@
                     </div>
                 </div>
                 <div class="modal-section">
-                    <div class="modal-section-title">Roster Format</div>
-                    <div class="modal-section-content">
-                        <label><input id="use_positions_input" type="checkbox" checked/> Use positional lineup (QB/RB/WR/TE/FLEX/K/DST)</label>
-                        <div id="positioned_inputs" style="margin-top:8px;">
-                            QB <input id="qb_input" type="number" min="0" value="1" style="width:60px;"/> •
-                            RB <input id="rb_input" type="number" min="0" value="2" style="width:60px;"/> •
-                            WR <input id="wr_input" type="number" min="0" value="2" style="width:60px;"/> •
-                            TE <input id="te_input" type="number" min="0" value="1" style="width:60px;"/> •
-                            FLEX <input id="flex_input" type="number" min="0" value="1" style="width:60px;"/> •
-                            K <input id="k_input" type="number" min="0" value="1" style="width:60px;"/> •
-                            DST <input id="dst_input" type="number" min="0" value="1" style="width:60px;"/>
-                        </div>
-                        <div id="starter_inputs" style="margin-top:8px; display:none;">
-                            STARTERS <input id="starters_input" type="number" min="1" value="8" style="width:80px;"/>
-                        </div>
-                        Bench <input id="bench_input" type="number" min="0" value="6" style="width:60px;"/>
+                    <div class="modal-section-title">Roster Positions</div>
+                    <div class="modal-section-content" style="display:grid; grid-template-columns: repeat(4, max-content); gap:10px 16px; align-items:center;">
+                        <label>QB <input id="qb_input" type="number" min="0" value="1" style="width:64px;"/></label>
+                        <label>RB <input id="rb_input" type="number" min="0" value="2" style="width:64px;"/></label>
+                        <label>WR <input id="wr_input" type="number" min="0" value="2" style="width:64px;"/></label>
+                        <label>TE <input id="te_input" type="number" min="0" value="1" style="width:64px;"/></label>
+                        <label>FLEX <input id="flex_input" type="number" min="0" value="1" style="width:64px;"/></label>
+                        <label>K <input id="k_input" type="number" min="0" value="1" style="width:64px;"/></label>
+                        <label>DST <input id="dst_input" type="number" min="0" value="1" style="width:64px;"/></label>
+                        <label>Bench <input id="bench_input" type="number" min="0" value="6" style="width:64px;"/></label>
                     </div>
                 </div>
             `;
@@ -1193,46 +1187,36 @@
                     { text: 'Save', class: 'modal-btn-primary', action: function(){ saveSettingsAndReload(); } }
                 ]
             });
-            // Toggle display based on checkbox
-            $(document).on('change', '#use_positions_input', function(){
-                const v = $('#use_positions_input').is(':checked');
-                $('#positioned_inputs').css('display', v ? 'block' : 'none');
-                $('#starter_inputs').css('display', v ? 'none' : 'block');
-            });
-            // Preload current settings from server
+            // Preload current settings from server (preserve zero values)
             $.get('/league_settings', function(resp){
                 if (resp && resp.success) {
                     const cfg = resp.config || {};
-                    $('#num_teams_input').val(resp.num_teams || 10);
-                    const usePos = (cfg.use_positions !== false);
-                    $('#use_positions_input').prop('checked', usePos).trigger('change');
-                    $('#qb_input').val(cfg.QB || 1);
-                    $('#rb_input').val(cfg.RB || 2);
-                    $('#wr_input').val(cfg.WR || 2);
-                    $('#te_input').val(cfg.TE || 1);
-                    $('#flex_input').val(cfg.FLEX || 1);
-                    $('#k_input').val(cfg.K || 1);
-                    $('#dst_input').val(cfg.DST || 1);
-                    $('#bench_input').val(cfg.Bench || 6);
-                    $('#starters_input').val(cfg.STARTERS || 8);
+                    $('#num_teams_input').val((resp.num_teams ?? 10));
+                    $('#qb_input').val((cfg.QB ?? 1));
+                    $('#rb_input').val((cfg.RB ?? 2));
+                    $('#wr_input').val((cfg.WR ?? 2));
+                    $('#te_input').val((cfg.TE ?? 1));
+                    $('#flex_input').val((cfg.FLEX ?? 1));
+                    $('#k_input').val((cfg.K ?? 1));
+                    $('#dst_input').val((cfg.DST ?? 1));
+                    $('#bench_input').val((cfg.Bench ?? 6));
                 }
             });
         }
 
         function saveSettingsAndReload() {
             const payload = {
-                num_teams: parseInt($('#num_teams_input').val(), 10) || 10,
+                num_teams: (Number.isFinite(parseInt($('#num_teams_input').val(),10)) ? parseInt($('#num_teams_input').val(),10) : 10),
                 roster_config: {
-                    use_positions: $('#use_positions_input').is(':checked'),
-                    QB: parseInt($('#qb_input').val(), 10) || 0,
-                    RB: parseInt($('#rb_input').val(), 10) || 0,
-                    WR: parseInt($('#wr_input').val(), 10) || 0,
-                    TE: parseInt($('#te_input').val(), 10) || 0,
-                    FLEX: parseInt($('#flex_input').val(), 10) || 0,
-                    K: parseInt($('#k_input').val(), 10) || 0,
-                    DST: parseInt($('#dst_input').val(), 10) || 0,
-                    Bench: parseInt($('#bench_input').val(), 10) || 0,
-                    STARTERS: parseInt($('#starters_input').val(), 10) || 8
+                    use_positions: true,
+                    QB: (Number.isFinite(parseInt($('#qb_input').val(),10)) ? parseInt($('#qb_input').val(),10) : 0),
+                    RB: (Number.isFinite(parseInt($('#rb_input').val(),10)) ? parseInt($('#rb_input').val(),10) : 0),
+                    WR: (Number.isFinite(parseInt($('#wr_input').val(),10)) ? parseInt($('#wr_input').val(),10) : 0),
+                    TE: (Number.isFinite(parseInt($('#te_input').val(),10)) ? parseInt($('#te_input').val(),10) : 0),
+                    FLEX: (Number.isFinite(parseInt($('#flex_input').val(),10)) ? parseInt($('#flex_input').val(),10) : 0),
+                    K: (Number.isFinite(parseInt($('#k_input').val(),10)) ? parseInt($('#k_input').val(),10) : 0),
+                    DST: (Number.isFinite(parseInt($('#dst_input').val(),10)) ? parseInt($('#dst_input').val(),10) : 0),
+                    Bench: (Number.isFinite(parseInt($('#bench_input').val(),10)) ? parseInt($('#bench_input').val(),10) : 0)
                 }
             };
             $.ajax({
