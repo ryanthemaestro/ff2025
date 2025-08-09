@@ -682,9 +682,9 @@ def suggest():
 
             # Round-based blend (match functions version)
             if current_round == 1:
-                alpha = 0.55
+                alpha = 0.45
             elif current_round == 2:
-                alpha = 0.70
+                alpha = 0.65
             elif current_round <= 4:
                 alpha = 0.75
             elif current_round <= 7:
@@ -706,7 +706,7 @@ def suggest():
                 adp_max = adp_series.max(skipna=True)
                 denom = (adp_max - adp_min) if pd.notna(adp_max) and pd.notna(adp_min) and (adp_max - adp_min) > 0 else 1.0
                 if current_round == 1:
-                    anchor_strength = 0.02
+                    anchor_strength = 0.06
                 elif current_round == 2:
                     anchor_strength = 0.06
                 elif current_round <= 4:
