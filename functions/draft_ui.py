@@ -693,7 +693,7 @@ def suggest():
 
             # Dynamic blend weight by round (mix more ADP in early/mid rounds)
             if current_round == 1:
-                alpha = 0.50  # 50% AI, 50% ADP in Round 1
+                alpha = 0.55  # Slightly more AI in Round 1
             elif current_round == 2:
                 alpha = 0.70  # 70% AI, 30% ADP in Round 2
             elif current_round <= 4:
@@ -716,11 +716,13 @@ def suggest():
                 adp_min = adp_series.min(skipna=True)
                 adp_max = adp_series.max(skipna=True)
                 denom = (adp_max - adp_min) if pd.notna(adp_max) and pd.notna(adp_min) and (adp_max - adp_min) > 0 else 1.0
-                # Moderate anchor early, taper by round
-                if current_round <= 2:
-                    anchor_strength = 0.08
+                # Softer anchor in Round 1 to reduce ADP pull; taper after
+                if current_round == 1:
+                    anchor_strength = 0.02
+                elif current_round == 2:
+                    anchor_strength = 0.06
                 elif current_round <= 4:
-                    anchor_strength = 0.05
+                    anchor_strength = 0.04
                 elif current_round <= 7:
                     anchor_strength = 0.03
                 else:
