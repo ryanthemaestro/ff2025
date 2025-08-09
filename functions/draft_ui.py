@@ -692,8 +692,10 @@ def suggest():
             enhanced_suggestions['adp_baseline'] = adp_baseline
 
             # Dynamic blend weight by round (mix more ADP in early/mid rounds)
-            if current_round <= 2:
-                alpha = 0.70  # 70% AI, 30% ADP
+            if current_round == 1:
+                alpha = 0.50  # 50% AI, 50% ADP in Round 1
+            elif current_round == 2:
+                alpha = 0.70
             elif current_round <= 4:
                 alpha = 0.75
             elif current_round <= 7:
