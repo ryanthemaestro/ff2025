@@ -495,7 +495,7 @@ def suggest():
             except Exception:
                 diag['model_available'] = False
             try:
-                import os
+                # Use global os import to avoid shadowing errors
                 diag['models_dir'] = sorted(os.listdir('models')) if os.path.isdir('models') else []
                 model_path = 'models/proper_fantasy_model.pkl'
                 diag['model_file_exists'] = os.path.exists(model_path)
