@@ -660,12 +660,17 @@ def suggest():
             enhanced_suggestions = enhanced_suggestions.copy()
             enhanced_suggestions['adp_baseline'] = adp_baseline
 
-            if current_round <= 2:
-                alpha = 0.95
-            elif current_round == 3:
-                alpha = 0.88
-            elif current_round <= 6:
-                alpha = 0.86
+            # Round-based blend (match functions version)
+            if current_round == 1:
+                alpha = 0.50
+            elif current_round == 2:
+                alpha = 0.70
+            elif current_round <= 4:
+                alpha = 0.75
+            elif current_round <= 7:
+                alpha = 0.80
+            elif current_round <= 10:
+                alpha = 0.85
             else:
                 alpha = 0.90
 
@@ -674,12 +679,20 @@ def suggest():
                 enhanced_suggestions['adp_baseline'].astype(float) * (1.0 - alpha)
             )
 
-            if current_round <= 3 and 'adp_rank' in enhanced_suggestions.columns:
+            # Early/mid ADP anchoring
+            if current_round <= 7 and 'adp_rank' in enhanced_suggestions.columns:
                 adp_series = enhanced_suggestions['adp_rank'].astype(float)
                 adp_min = adp_series.min(skipna=True)
                 adp_max = adp_series.max(skipna=True)
                 denom = (adp_max - adp_min) if pd.notna(adp_max) and pd.notna(adp_min) and (adp_max - adp_min) > 0 else 1.0
-                anchor_strength = 0.00 if current_round <= 2 else 0.03
+                if current_round <= 2:
+                    anchor_strength = 0.08
+                elif current_round <= 4:
+                    anchor_strength = 0.05
+                elif current_round <= 7:
+                    anchor_strength = 0.03
+                else:
+                    anchor_strength = 0.00
 
                 def anchor_multiplier(adp_val: float) -> float:
                     if pd.isna(adp_val):
