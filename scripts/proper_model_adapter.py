@@ -31,6 +31,26 @@ class ProperModelAdapter:
     def load_model(self):
         """Load the proper CatBoost model"""
         try:
+            # Prefer explicit env override if provided
+            env_model_path = os.getenv('PROPER_MODEL_PATH')
+            if env_model_path and os.path.exists(env_model_path):
+                self.model = joblib.load(env_model_path)
+                print(f"✅ Loaded proper AI model from env PROPER_MODEL_PATH: {env_model_path}")
+                meta_path = os.getenv('PROPER_MODEL_METADATA')
+                if meta_path and os.path.exists(meta_path):
+                    print(f"ℹ️ Using metadata file: {meta_path}")
+                # Sync feature order from model if available
+                try:
+                    model_feature_names = getattr(self.model, 'feature_names_', None)
+                    if model_feature_names:
+                        self.model_features = list(model_feature_names)
+                        print(f"🔧 Synced feature order from model: {len(self.model_features)} features")
+                except Exception:
+                    pass
+                return True
+            elif env_model_path:
+                print(f"⚠️ PROPER_MODEL_PATH set but not found: {env_model_path}")
+            
             candidate_paths = [
                 'models/proper_fantasy_model.pkl',
                 '../models/proper_fantasy_model.pkl',
@@ -49,6 +69,17 @@ class ProperModelAdapter:
                 return False
             self.model = joblib.load(chosen_path)
             print(f"✅ Loaded proper AI model from: {chosen_path}")
+            meta_path = os.path.join(os.path.dirname(chosen_path), 'proper_model_metadata_20250805_084024.json')
+            if os.path.exists(meta_path):
+                print(f"ℹ️ Found matching metadata file: {meta_path}")
+            # Sync feature order from model if available
+            try:
+                model_feature_names = getattr(self.model, 'feature_names_', None)
+                if model_feature_names:
+                    self.model_features = list(model_feature_names)
+                    print(f"🔧 Synced feature order from model: {len(self.model_features)} features")
+            except Exception:
+                pass
             return True
         except Exception as e:
             print(f"❌ Error loading proper model: {e}")
@@ -161,7 +192,7 @@ class ProperModelAdapter:
                 if feature not in features_df.columns:
                     features_df[feature] = 0
             
-            # Make predictions
+            # Reindex to exact model feature order to satisfy CatBoost
             X = features_df[self.model_features]
             predictions = self.model.predict(X)
             

@@ -338,6 +338,8 @@ def index():
 def suggest():
     """Suggest draft picks using our proper AI model"""
     try:
+        debug_mode = request.args.get('diag') == 'true'
+        diag = {}
         # Check for filtering parameters
         position_filter = request.args.get('position')
         all_available = request.args.get('all_available') == 'true'
@@ -481,7 +483,21 @@ def suggest():
         try:
             from scripts.proper_model_adapter import predict_players, is_model_available
             
-            if is_model_available():
+            # Diagnostics for model presence and files
+            try:
+                diag['model_available'] = bool(is_model_available())
+            except Exception as _:
+                diag['model_available'] = False
+            try:
+                diag['models_dir'] = sorted(os.listdir('models')) if os.path.isdir('models') else []
+                model_path = 'models/proper_fantasy_model.pkl'
+                diag['model_file_exists'] = os.path.exists(model_path)
+                if diag['model_file_exists']:
+                    diag['model_file_size'] = os.path.getsize(model_path)
+            except Exception:
+                pass
+
+            if diag.get('model_available', False):
                 print("🤖 Using PROPER AI model with no data leakage")
                 # Get AI predictions for available players
                 ai_results = predict_players(available_df)
@@ -500,6 +516,7 @@ def suggest():
                     print(f"✅ Using PROPER AI × Scarcity for {len(enhanced_suggestions)} players")
                 else:
                     print("❌ AI prediction failed, using scarcity-only")
+                    diag['used'] = 'SCARCITY_FALLBACK_AI_NONE'
                     enhanced_suggestions = apply_simple_scarcity_boost(available_df, our_team, current_round)
                     enhanced_suggestions['boosted_score'] = (
                         enhanced_suggestions['projected_points'] * enhanced_suggestions['scarcity_boost']
@@ -507,6 +524,7 @@ def suggest():
                     enhanced_suggestions = enhanced_suggestions.sort_values('boosted_score', ascending=False)
             else:
                 print("❌ Proper AI model not available, using scarcity-based sorting")
+                diag['used'] = 'SCARCITY_NO_MODEL'
                 enhanced_suggestions = apply_simple_scarcity_boost(available_df, our_team, current_round)
                 enhanced_suggestions['boosted_score'] = (
                     enhanced_suggestions['projected_points'] * enhanced_suggestions['scarcity_boost']
@@ -514,6 +532,8 @@ def suggest():
                 enhanced_suggestions = enhanced_suggestions.sort_values('boosted_score', ascending=False)
         except Exception as e:
             print(f"❌ Error with AI model: {e}")
+            diag['used'] = 'SCARCITY_EXCEPTION'
+            diag['error'] = str(e)
             enhanced_suggestions = apply_simple_scarcity_boost(available_df, our_team, current_round)
             enhanced_suggestions['boosted_score'] = (
                 enhanced_suggestions['projected_points'] * enhanced_suggestions['scarcity_boost']
@@ -789,6 +809,16 @@ def suggest():
                 'scarcity_boost': round(float(scarcity_boost), 2) if not pd.isna(scarcity_boost) else 1.0
             })
         
+        if debug_mode:
+            # Include minimal diag bundle
+            try:
+                with open(STATE_FILE, 'r') as f:
+                    _st = json.load(f)
+                diag['roster_config'] = _st.get('roster_config', {})
+                diag['num_teams'] = _st.get('num_teams', DEFAULT_ROSTER_CONFIG['num_teams'])
+            except Exception:
+                pass
+            return jsonify({'diag': diag, 'suggestions': formatted_suggestions})
         return jsonify(formatted_suggestions)
         
     except Exception as e:
