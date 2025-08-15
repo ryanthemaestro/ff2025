@@ -27,6 +27,9 @@ DEFAULT_ROSTER_CONFIG = {
     'STARTERS': 8
 }
 
+# Supported draft strategies (user-selectable via /strategy)
+ALLOWED_STRATEGIES = {"balanced", "wr_first", "hero_rb"}
+
 def build_team_from_config(config: dict) -> dict:
     cfg = {**DEFAULT_ROSTER_CONFIG, **(config or {})}
     team = {}
@@ -434,6 +437,13 @@ def suggest():
         total_picks = len(drafted_names)
         current_round = (total_picks // 10) + 1
         print(f"📊 Estimated draft round: {current_round}")
+        try:
+            with open(STATE_FILE, 'r') as f:
+                _st_strategy = json.load(f)
+            draft_strategy = _st_strategy.get('draft_strategy', 'balanced')
+        except Exception:
+            draft_strategy = 'balanced'
+        print(f"🎛️ Strategy: {draft_strategy}")
         print("🎯 Returning AI recommendations")
         
         # Simple scarcity boost function
@@ -628,16 +638,18 @@ def suggest():
                 if pos in ('RB', 'WR'):
                     need_two = 2
                     have = have_rb if pos == 'RB' else have_wr
+                    # 2025 strategy: Moderate WR priority early; RB anchor possible
                     if rnd <= 2:
-                        w = 1.25
+                        w = 1.15 if pos == 'WR' else 0.94
                     elif rnd == 3:
-                        w = 1.15
+                        w = 1.08 if pos == 'WR' else 0.97
                     elif rnd in (4, 5):
-                        w = 1.1
+                        w = 1.05 if pos == 'WR' else 1.00
                     else:
                         w = 1.0
-                    if have < need_two:
-                        w *= 1.1
+                    if have < need_two and pos == 'WR':
+                        # If we don't yet have two WRs, give a small bump
+                        w *= 1.10
                     return w
 
                 if pos == 'TE':
@@ -669,6 +681,109 @@ def suggest():
         except Exception:
             pass
 
+        # Anchor RB rule in early rounds: prefer WR unless RB clearly clears by margin
+        try:
+            if current_round <= 2 and 'position' in enhanced_suggestions.columns:
+                top_rb = enhanced_suggestions[enhanced_suggestions['position'] == 'RB']['final_score']
+                top_wr = enhanced_suggestions[enhanced_suggestions['position'] == 'WR']['final_score']
+                if len(top_rb) > 0 and len(top_wr) > 0:
+                    rb_max = float(top_rb.max())
+                    wr_max = float(top_wr.max())
+                    # Strategy-driven RB anchor margin
+                    try:
+                        with open(STATE_FILE, 'r') as f:
+                            _st = json.load(f)
+                        _strat = _st.get('draft_strategy', 'balanced')
+                    except Exception:
+                        _strat = 'balanced'
+                    if _strat == 'hero_rb':
+                        margin = 1.06
+                    elif _strat == 'wr_first':
+                        margin = 1.14
+                    else:
+                        margin = 1.10
+                    if rb_max >= wr_max * margin:
+                        # small universal RB nudge to acknowledge anchor RB path
+                        mask = enhanced_suggestions['position'] == 'RB'
+                        enhanced_suggestions.loc[mask, 'final_score'] = (
+                            enhanced_suggestions.loc[mask, 'final_score'].astype(float) * 1.00
+                        )
+                    else:
+                        # default to WR preference in R1-2
+                        mask = enhanced_suggestions['position'] == 'WR'
+                        enhanced_suggestions.loc[mask, 'final_score'] = (
+                            enhanced_suggestions.loc[mask, 'final_score'].astype(float) * 1.08
+                        )
+                    enhanced_suggestions = enhanced_suggestions.sort_values('final_score', ascending=False)
+        except Exception:
+            pass
+
+        # Strategy macro-weights
+        try:
+            # Read strategy once here
+            try:
+                with open(STATE_FILE, 'r') as f:
+                    _st2 = json.load(f)
+                _strategy = _st2.get('draft_strategy', 'balanced')
+            except Exception:
+                _strategy = 'balanced'
+            if 'position' in enhanced_suggestions.columns:
+                if _strategy == 'wr_first' and current_round <= 3:
+                    mask_wr = enhanced_suggestions['position'] == 'WR'
+                    enhanced_suggestions.loc[mask_wr, 'final_score'] = (
+                        enhanced_suggestions.loc[mask_wr, 'final_score'].astype(float) * 1.06
+                    )
+                    if current_round <= 2:
+                        mask_rb = enhanced_suggestions['position'] == 'RB'
+                        enhanced_suggestions.loc[mask_rb, 'final_score'] = (
+                            enhanced_suggestions.loc[mask_rb, 'final_score'].astype(float) * 0.98
+                        )
+                    enhanced_suggestions = enhanced_suggestions.sort_values('final_score', ascending=False)
+                elif _strategy == 'hero_rb' and current_round <= 2:
+                    mask_rb = enhanced_suggestions['position'] == 'RB'
+                    enhanced_suggestions.loc[mask_rb, 'final_score'] = (
+                        enhanced_suggestions.loc[mask_rb, 'final_score'].astype(float) * 1.03
+                    )
+                    enhanced_suggestions = enhanced_suggestions.sort_values('final_score', ascending=False)
+        except Exception:
+            pass
+
+        # Dual‑threat QB micro‑bonus in Rounds 3–4
+        try:
+            if current_round in (3, 4):
+                dual_qbs = {
+                    'Lamar Jackson', 'Josh Allen', 'Jalen Hurts', 'Jayden Daniels'
+                }
+                mask = (enhanced_suggestions['position'] == 'QB') & (
+                    enhanced_suggestions['name'].isin(list(dual_qbs))
+                )
+                if mask.any():
+                    enhanced_suggestions.loc[mask, 'final_score'] = (
+                        enhanced_suggestions.loc[mask, 'final_score'].astype(float) * 1.04
+                    )
+                    enhanced_suggestions = enhanced_suggestions.sort_values('final_score', ascending=False)
+        except Exception:
+            pass
+
+        # Tight end gating: only boost elite TE early; otherwise penalize
+        try:
+            if current_round <= 3:
+                elite_tes = {'Sam LaPorta', 'Trey McBride', 'Brock Bowers'}
+                te_mask = (enhanced_suggestions['position'] == 'TE')
+                elite_mask = te_mask & enhanced_suggestions['name'].isin(list(elite_tes))
+                non_elite_mask = te_mask & ~enhanced_suggestions['name'].isin(list(elite_tes))
+                if elite_mask.any():
+                    enhanced_suggestions.loc[elite_mask, 'final_score'] = (
+                        enhanced_suggestions.loc[elite_mask, 'final_score'].astype(float) * 1.03
+                    )
+                if non_elite_mask.any():
+                    enhanced_suggestions.loc[non_elite_mask, 'final_score'] = (
+                        enhanced_suggestions.loc[non_elite_mask, 'final_score'].astype(float) * 0.88
+                    )
+                enhanced_suggestions = enhanced_suggestions.sort_values('final_score', ascending=False)
+        except Exception:
+            pass
+
         # Blend AI-driven score with ADP baseline; add early-round ADP anchoring
         try:
             adp_baseline = []
@@ -680,9 +795,10 @@ def suggest():
             enhanced_suggestions = enhanced_suggestions.copy()
             enhanced_suggestions['adp_baseline'] = adp_baseline
 
-            # Round-based blend (match functions version)
+            # Round-based blend (moderate ADP anchoring in Round 1)
             if current_round == 1:
-                alpha = 0.30
+                # Give AI some voice while still leaning ADP
+                alpha = 0.25
             elif current_round == 2:
                 alpha = 0.65
             elif current_round <= 4:
@@ -706,7 +822,8 @@ def suggest():
                 adp_max = adp_series.max(skipna=True)
                 denom = (adp_max - adp_min) if pd.notna(adp_max) and pd.notna(adp_min) and (adp_max - adp_min) > 0 else 1.0
                 if current_round == 1:
-                    anchor_strength = 0.10
+                    # Moderate ADP anchor in Round 1 (allow some variation)
+                    anchor_strength = 0.15
                 elif current_round == 2:
                     anchor_strength = 0.06
                 elif current_round <= 4:
@@ -731,7 +848,7 @@ def suggest():
         except Exception:
             pass
  
-        # Encourage divergence from ADP when AI strongly disagrees (Rounds 1-2)
+        # Encourage slight divergence from ADP when AI strongly disagrees (Rounds 1-2)
         try:
             if current_round <= 2 and 'adp_rank' in enhanced_suggestions.columns:
                 if 'ai_prediction' in enhanced_suggestions.columns:
@@ -742,16 +859,33 @@ def suggest():
                     enhanced_suggestions['rank_delta_norm'] = (
                         (enhanced_suggestions['adp_rank_num'] - enhanced_suggestions['ai_rank']) / n
                     ).fillna(0.0)
-                    gamma = 0.50
+                    # Softer exploration in Round 1, slightly stronger in Round 2
+                    gamma = 0.15 if current_round == 1 else 0.35
                     base_boost = 1.0 + gamma * enhanced_suggestions['rank_delta_norm']
                     delta = (enhanced_suggestions['adp_rank_num'] - enhanced_suggestions['ai_rank']).fillna(0.0)
                     extra = pd.Series(1.0, index=delta.index)
-                    extra = extra.where(~(delta >= 8), 1.12)
-                    extra = extra.where(~(delta >= 12), 1.18)
+                    if current_round == 1:
+                        # Tiny extra bump only for big deltas
+                        extra = extra.where(~(delta >= 10), 1.05)
+                        extra = extra.where(~(delta >= 14), 1.08)
+                    else:
+                        extra = extra.where(~(delta >= 8), 1.12)
+                        extra = extra.where(~(delta >= 12), 1.18)
                     boost = (base_boost * extra)
-                    boost = boost.clip(lower=0.88, upper=1.20)
+                    boost = boost.clip(lower=0.95 if current_round == 1 else 0.88,
+                                       upper=1.08 if current_round == 1 else 1.20)
                     enhanced_suggestions['final_score'] = enhanced_suggestions['final_score'].astype(float) * boost.astype(float)
                     enhanced_suggestions = enhanced_suggestions.sort_values('final_score', ascending=False)
+        except Exception:
+            pass
+
+        # Final ordering tweak for Round 1: use score first, then ADP as tie-breaker
+        try:
+            if current_round == 1 and 'adp_rank' in enhanced_suggestions.columns:
+                enhanced_suggestions['adp_rank_num'] = pd.to_numeric(enhanced_suggestions['adp_rank'], errors='coerce')
+                enhanced_suggestions = enhanced_suggestions.sort_values(
+                    by=['final_score', 'adp_rank_num'], ascending=[False, True]
+                )
         except Exception:
             pass
 
@@ -1172,6 +1306,34 @@ def league_settings_local():
             state['drafted_by_others'] = []
         with open(STATE_FILE, 'w') as f:
             json.dump(state, f)
+        return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'success': False, 'error': str(e)})
+
+# Strategy endpoints for local dev
+@app.route('/strategy', methods=['GET', 'POST'])
+def strategy_settings():
+    try:
+        if request.method == 'GET':
+            try:
+                with open(STATE_FILE, 'r') as f:
+                    st = json.load(f)
+            except Exception:
+                st = {}
+            strat = st.get('draft_strategy', 'balanced')
+            return jsonify({'success': True, 'draft_strategy': strat, 'allowed': sorted(list(ALLOWED_STRATEGIES))})
+        payload = request.get_json() or {}
+        new_strat = str(payload.get('draft_strategy', 'balanced')).lower()
+        if new_strat not in ALLOWED_STRATEGIES:
+            return jsonify({'success': False, 'error': 'Invalid strategy'}), 400
+        try:
+            with open(STATE_FILE, 'r') as f:
+                st = json.load(f)
+        except Exception:
+            st = {}
+        st['draft_strategy'] = new_strat
+        with open(STATE_FILE, 'w') as f:
+            json.dump(st, f)
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})

@@ -1,9 +1,50 @@
+[2025-08-11 09:48:33 -0400] [888149] [INFO] Starting gunicorn 23.0.0
+[2025-08-11 09:48:33 -0400] [888149] [INFO] Listening at: http://0.0.0.0:5000 (888149)
+[2025-08-11 09:48:33 -0400] [888149] [INFO] Using worker: sync
+[2025-08-11 09:48:33 -0400] [888151] [INFO] Booting worker with pid: 888151
+[2025-08-11 09:48:35 -0400] [888149] [INFO] Handling signal: winch
+[2025-08-11 09:48:35 -0400] [888149] [INFO] Handling signal: winch
+[2025-08-11 09:48:35 -0400] [888149] [INFO] Handling signal: winch
+[2025-08-11 14:18:13 -0400] [888149] [CRITICAL] WORKER TIMEOUT (pid:888151)
+[2025-08-11 14:18:13 -0400] [888151] [ERROR] Error handling request (no URI read)
+Traceback (most recent call last):
+  File "/home/nar/ff2025/venv/lib/python3.12/site-packages/gunicorn/workers/sync.py", line 133, in handle
+    req = next(parser)
+          ^^^^^^^^^^^^
+  File "/home/nar/ff2025/venv/lib/python3.12/site-packages/gunicorn/http/parser.py", line 41, in __next__
+    self.mesg = self.mesg_class(self.cfg, self.unreader, self.source_addr, self.req_count)
+                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/nar/ff2025/venv/lib/python3.12/site-packages/gunicorn/http/message.py", line 259, in __init__
+    super().__init__(cfg, unreader, peer_addr)
+  File "/home/nar/ff2025/venv/lib/python3.12/site-packages/gunicorn/http/message.py", line 60, in __init__
+    unused = self.parse(self.unreader)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/nar/ff2025/venv/lib/python3.12/site-packages/gunicorn/http/message.py", line 271, in parse
+    self.get_data(unreader, buf, stop=True)
+  File "/home/nar/ff2025/venv/lib/python3.12/site-packages/gunicorn/http/message.py", line 262, in get_data
+    data = unreader.read()
+           ^^^^^^^^^^^^^^^
+  File "/home/nar/ff2025/venv/lib/python3.12/site-packages/gunicorn/http/unreader.py", line 36, in read
+    d = self.chunk()
+        ^^^^^^^^^^^^
+  File "/home/nar/ff2025/venv/lib/python3.12/site-packages/gunicorn/http/unreader.py", line 63, in chunk
+    return self.sock.recv(self.mxchunk)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/nar/ff2025/venv/lib/python3.12/site-packages/gunicorn/workers/base.py", line 204, in handle_abort
+    sys.exit(1)
+SystemExit: 1
+[2025-08-11 14:18:13 -0400] [888151] [INFO] Worker exiting (pid: 888151)
 🏈 Loading FantasyPros ADP Rankings...
 ✅ Loaded 858 players from FantasyPros ADP Rankings
    Positions: {'WR': 283, 'RB': 203, 'TE': 150, 'QB': 124, 'K': 60, 'DST': 32, 'LB': 2, 'DT': 1, 'CB': 1}
 🆕 Loading FantasyPros Rookie Rankings...
+📅 Creating team bye week mapping from ADP data...
+✅ Created bye week mapping for 33 teams
+✅ Assigned bye weeks to 121 rookies based on team mapping
 ✅ Loaded 127 rookies from FantasyPros Rookie Rankings
    Rookie Positions: {'WR': 57, 'RB': 32, 'TE': 23, 'QB': 15}
+🆕 Marking rookie players in main dataset...
+✅ Marked 96 players as rookies in main dataset
 🏥 Adding injury status to player data...
 📊 Loading nfl_data_py library...
 📊 Fetching 2025 NFL injury data from nflverse...
@@ -15,13 +56,100 @@
 🔍 Matching 127 players against 6215 injury records...
 ✅ Found injury status for 0 players
 ✅ Injury status added to all players
- * Serving Flask app 'draft_ui'
- * Debug mode: on
-[31m[1mWARNING: This is a development server. Do not use it in a production deployment. Use a production WSGI server instead.[0m
- * Running on all addresses (0.0.0.0)
- * Running on http://127.0.0.1:5000
- * Running on http://192.168.1.169:5000
-[33mPress CTRL+C to quit[0m
- * Restarting with stat
- * Debugger is active!
- * Debugger PIN: 113-522-762
+🚫 Excluding 0 drafted players from AI recommendations: []
+📊 Estimated draft round: 1
+🎛️ Strategy: balanced
+🎯 Returning AI recommendations
+❌ Error with AI model: No module named 'joblib'
+Loaded state from file.
+🚫 Excluding 0 drafted players from AI recommendations: []
+📋 Returning ALL available players
+🚫 Excluding 0 drafted players from AI recommendations: []
+📊 Estimated draft round: 1
+🎛️ Strategy: balanced
+🎯 Returning AI recommendations
+❌ Error with AI model: No module named 'joblib'
+Loaded state from file.
+🚫 Excluding 0 drafted players from AI recommendations: []
+📋 Returning ALL available players
+🚫 Excluding 0 drafted players from AI recommendations: []
+📊 Estimated draft round: 1
+🎛️ Strategy: balanced
+🎯 Returning AI recommendations
+❌ Error with AI model: No module named 'joblib'
+Loaded state from file.
+Loaded state from file.
+🚫 Excluding 1 drafted players from AI recommendations: ["Ja'Marr Chase"]
+📋 Returning ALL available players
+🚫 Excluding 1 drafted players from AI recommendations: ["Ja'Marr Chase"]
+📊 Estimated draft round: 1
+🎛️ Strategy: balanced
+🎯 Returning AI recommendations
+❌ Error with AI model: No module named 'joblib'
+🚫 Excluding 1 drafted players from AI recommendations: ["Ja'Marr Chase"]
+🎯 Filtering for RB players only
+Loaded state from file.
+Loaded state from file.
+🚫 Excluding 2 drafted players from AI recommendations: ['Saquon Barkley', "Ja'Marr Chase"]
+📋 Returning ALL available players
+🚫 Excluding 2 drafted players from AI recommendations: ['Saquon Barkley', "Ja'Marr Chase"]
+📊 Estimated draft round: 1
+🎛️ Strategy: balanced
+🎯 Returning AI recommendations
+❌ Error with AI model: No module named 'joblib'
+🚫 Excluding 2 drafted players from AI recommendations: ['Saquon Barkley', "Ja'Marr Chase"]
+🎯 Filtering for WR players only
+Loaded state from file.
+Loaded state from file.
+🚫 Excluding 3 drafted players from AI recommendations: ['Saquon Barkley', "Ja'Marr Chase", 'Justin Jefferson']
+📋 Returning ALL available players
+🚫 Excluding 3 drafted players from AI recommendations: ['Saquon Barkley', "Ja'Marr Chase", 'Justin Jefferson']
+📊 Estimated draft round: 1
+🎛️ Strategy: balanced
+🎯 Returning AI recommendations
+❌ Error with AI model: No module named 'joblib'
+🚫 Excluding 3 drafted players from AI recommendations: ['Saquon Barkley', "Ja'Marr Chase", 'Justin Jefferson']
+🎯 Filtering for RB players only
+Loaded state from file.
+Loaded state from file.
+🚫 Excluding 4 drafted players from AI recommendations: ['Saquon Barkley', 'Bijan Robinson', "Ja'Marr Chase", 'Justin Jefferson']
+📋 Returning ALL available players
+🚫 Excluding 4 drafted players from AI recommendations: ['Saquon Barkley', 'Bijan Robinson', "Ja'Marr Chase", 'Justin Jefferson']
+📊 Estimated draft round: 1
+🎛️ Strategy: balanced
+🎯 Returning AI recommendations
+❌ Error with AI model: No module named 'joblib'
+🚫 Excluding 4 drafted players from AI recommendations: ['Saquon Barkley', 'Bijan Robinson', "Ja'Marr Chase", 'Justin Jefferson']
+🎯 Filtering for TE players only
+Loaded state from file.
+Loaded state from file.
+🚫 Excluding 5 drafted players from AI recommendations: ['Saquon Barkley', 'Bijan Robinson', "Ja'Marr Chase", 'Justin Jefferson', 'Brock Bowers']
+📋 Returning ALL available players
+🚫 Excluding 5 drafted players from AI recommendations: ['Saquon Barkley', 'Bijan Robinson', "Ja'Marr Chase", 'Justin Jefferson', 'Brock Bowers']
+📊 Estimated draft round: 1
+🎛️ Strategy: balanced
+🎯 Returning AI recommendations
+❌ Error with AI model: No module named 'joblib'
+🚫 Excluding 5 drafted players from AI recommendations: ['Saquon Barkley', 'Bijan Robinson', "Ja'Marr Chase", 'Justin Jefferson', 'Brock Bowers']
+🎯 Filtering for WR players only
+Loaded state from file.
+Loaded state from file.
+🚫 Excluding 6 drafted players from AI recommendations: ['Saquon Barkley', 'Bijan Robinson', "Ja'Marr Chase", 'Justin Jefferson', 'Brock Bowers', 'CeeDee Lamb']
+📋 Returning ALL available players
+🚫 Excluding 6 drafted players from AI recommendations: ['Saquon Barkley', 'Bijan Robinson', "Ja'Marr Chase", 'Justin Jefferson', 'Brock Bowers', 'CeeDee Lamb']
+📊 Estimated draft round: 1
+🎛️ Strategy: balanced
+🎯 Returning AI recommendations
+❌ Error with AI model: No module named 'joblib'
+🚫 Excluding 6 drafted players from AI recommendations: ['Saquon Barkley', 'Bijan Robinson', "Ja'Marr Chase", 'Justin Jefferson', 'Brock Bowers', 'CeeDee Lamb']
+🎯 Filtering for WR players only
+Loaded state from file.
+Loaded state from file.
+🚫 Excluding 7 drafted players from AI recommendations: ['Saquon Barkley', 'Bijan Robinson', "Ja'Marr Chase", 'Justin Jefferson', 'Puka Nacua', 'Brock Bowers', 'CeeDee Lamb']
+📋 Returning ALL available players
+🚫 Excluding 7 drafted players from AI recommendations: ['Saquon Barkley', 'Bijan Robinson', "Ja'Marr Chase", 'Justin Jefferson', 'Puka Nacua', 'Brock Bowers', 'CeeDee Lamb']
+📊 Estimated draft round: 1
+🎛️ Strategy: balanced
+🎯 Returning AI recommendations
+❌ Error with AI model: No module named 'joblib'
+[2025-08-11 14:18:13 -0400] [1089283] [INFO] Booting worker with pid: 1089283

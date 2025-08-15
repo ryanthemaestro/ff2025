@@ -6,7 +6,6 @@ Converts ADP player data into historical features for our leak-free AI model
 
 import pandas as pd
 import numpy as np
-import joblib
 import os
 
 class ProperModelAdapter:
@@ -31,6 +30,13 @@ class ProperModelAdapter:
     def load_model(self):
         """Load the proper CatBoost model"""
         try:
+            # Import joblib lazily to avoid import-time failures when the package isn't installed
+            try:
+                import joblib  # type: ignore
+            except ImportError:
+                print("❌ joblib not installed; AI model disabled. Ensure joblib is in your environment (pip install -r requirements.txt).")
+                self.model = None
+                return False
             # Prefer explicit env override if provided
             env_model_path = os.getenv('PROPER_MODEL_PATH')
             if env_model_path and os.path.exists(env_model_path):

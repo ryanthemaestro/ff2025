@@ -1,0 +1,153 @@
+{
+  "timestamp": "20250807_152622",
+  "model_type": "CatBoost",
+  "training_samples": 27,
+  "features": [
+    "hist_games_played",
+    "hist_avg_passing_yards",
+    "hist_avg_passing_tds",
+    "hist_avg_interceptions",
+    "hist_avg_rushing_yards",
+    "hist_avg_rushing_tds",
+    "hist_avg_receiving_yards",
+    "hist_avg_receiving_tds",
+    "hist_avg_receptions",
+    "hist_avg_targets",
+    "hist_avg_carries",
+    "hist_std_fantasy_points",
+    "hist_max_fantasy_points",
+    "hist_min_fantasy_points",
+    "recent_avg_fantasy_points",
+    "recent_vs_season_trend",
+    "is_qb",
+    "is_rb",
+    "is_wr",
+    "is_te",
+    "season_2022",
+    "season_2023",
+    "season_2024",
+    "week",
+    "early_season",
+    "mid_season",
+    "late_season"
+  ],
+  "metrics": {
+    "train_mae": 4.084183603045635,
+    "test_mae": 5.055896102904013,
+    "train_r2": 0.570187662171725,
+    "test_r2": 0.29340208374999943,
+    "feature_importance": [
+      {
+        "feature": "recent_avg_fantasy_points",
+        "importance": 11.256975863832727
+      },
+      {
+        "feature": "hist_max_fantasy_points",
+        "importance": 8.945804092825973
+      },
+      {
+        "feature": "recent_vs_season_trend",
+        "importance": 7.314064097422987
+      },
+      {
+        "feature": "hist_min_fantasy_points",
+        "importance": 7.199915973630075
+      },
+      {
+        "feature": "hist_avg_targets",
+        "importance": 7.006240192572157
+      },
+      {
+        "feature": "hist_std_fantasy_points",
+        "importance": 5.866279058992353
+      },
+      {
+        "feature": "hist_avg_carries",
+        "importance": 5.780651558660768
+      },
+      {
+        "feature": "hist_avg_receptions",
+        "importance": 5.212000195042556
+      },
+      {
+        "feature": "hist_avg_rushing_yards",
+        "importance": 5.028424548271127
+      },
+      {
+        "feature": "hist_avg_receiving_yards",
+        "importance": 4.810415371539495
+      },
+      {
+        "feature": "hist_games_played",
+        "importance": 4.549735380819604
+      },
+      {
+        "feature": "hist_avg_receiving_tds",
+        "importance": 4.5410630168925605
+      },
+      {
+        "feature": "week",
+        "importance": 3.9731013539998483
+      },
+      {
+        "feature": "hist_avg_passing_tds",
+        "importance": 3.463680468862234
+      },
+      {
+        "feature": "hist_avg_passing_yards",
+        "importance": 3.391350605377837
+      },
+      {
+        "feature": "hist_avg_rushing_tds",
+        "importance": 3.3040781502336865
+      },
+      {
+        "feature": "season_2024",
+        "importance": 2.064009732062915
+      },
+      {
+        "feature": "hist_avg_interceptions",
+        "importance": 1.779578553911716
+      },
+      {
+        "feature": "season_2023",
+        "importance": 1.3138538825082364
+      },
+      {
+        "feature": "season_2022",
+        "importance": 1.257723133225465
+      },
+      {
+        "feature": "mid_season",
+        "importance": 0.6566956357093894
+      },
+      {
+        "feature": "is_qb",
+        "importance": 0.4755607268146537
+      },
+      {
+        "feature": "is_wr",
+        "importance": 0.32116991491131053
+      },
+      {
+        "feature": "late_season",
+        "importance": 0.16024415647979046
+      },
+      {
+        "feature": "is_te",
+        "importance": 0.1403125723828727
+      },
+      {
+        "feature": "early_season",
+        "importance": 0.10793865613163382
+      },
+      {
+        "feature": "is_rb",
+        "importance": 0.07913310688598216
+      }
+    ]
+  },
+  "target": "future_fantasy_points_from_historical_avg",
+  "no_data_leakage": true,
+  "description": "Predicts future fantasy performance from historical averages"
+}
