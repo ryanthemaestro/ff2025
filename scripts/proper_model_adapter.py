@@ -2,35 +2,92 @@
 """
 Proper Model Adapter
 Converts ADP player data into historical features for our leak-free AI model
+Now uses shared feature builder for real historical features (no leakage),
+with a safe fallback to mock features if needed.
 """
 
 import pandas as pd
 import numpy as np
-import joblib
 import os
+import sys
+import glob
+import json
+
+# Ensure src/ is importable for shared feature builder
+ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..'))
+SRC_DIR = os.path.join(ROOT_DIR, 'src')
+if SRC_DIR not in sys.path:
+    sys.path.insert(0, SRC_DIR)
+
+try:
+    from models.feature_builder import build_live_features_for_players, REQUIRED_FEATURES
+except Exception as _e:
+    build_live_features_for_players = None
+    try:
+        # Minimal fallback list if import fails
+        REQUIRED_FEATURES = [
+            'hist_games_played',
+            'hist_avg_passing_yards', 'hist_avg_passing_tds', 'hist_avg_interceptions',
+            'hist_avg_rushing_yards', 'hist_avg_rushing_tds',
+            'hist_avg_receiving_yards', 'hist_avg_receiving_tds',
+            'hist_avg_receptions', 'hist_avg_targets', 'hist_avg_carries',
+            'hist_std_fantasy_points', 'hist_max_fantasy_points', 'hist_min_fantasy_points',
+            'recent_avg_fantasy_points', 'recent_vs_season_trend',
+            'recent5_avg_fantasy_points', 'recent5_std_fantasy_points',
+            'weighted_avg_fantasy_points',
+            'eff_yards_per_target', 'eff_yards_per_carry',
+            'rate_receiving_td', 'rate_rushing_td', 'rate_pass_td_to_int',
+            'is_qb', 'is_rb', 'is_wr', 'is_te',
+            'season_2022', 'season_2023', 'season_2024',
+            'week', 'early_season', 'mid_season', 'late_season',
+        ]
+    except Exception:
+        REQUIRED_FEATURES = []
 
 class ProperModelAdapter:
     """Adapter to use proper AI model with ADP data"""
     
     def __init__(self):
         self.model = None
-        self.model_features = [
-            'hist_games_played',
-            'hist_avg_passing_yards', 'hist_avg_passing_tds', 'hist_avg_interceptions',
-            'hist_avg_rushing_yards', 'hist_avg_rushing_tds',
-            'hist_avg_receiving_yards', 'hist_avg_receiving_tds', 
-            'hist_avg_receptions', 'hist_avg_targets', 'hist_avg_carries',
-            'hist_std_fantasy_points', 'hist_max_fantasy_points', 'hist_min_fantasy_points',
-            'recent_avg_fantasy_points', 'recent_vs_season_trend',
-            'is_qb', 'is_rb', 'is_wr', 'is_te',
-            'season_2022', 'season_2023', 'season_2024',
-            'week', 'early_season', 'mid_season', 'late_season'
-        ]
+        # Default to shared REQUIRED_FEATURES; can be overridden by model metadata
+        self.model_features = list(REQUIRED_FEATURES) if REQUIRED_FEATURES else []
+        # Optional quantile models
+        self.quantile_models = {"q05": None, "q50": None, "q95": None}
         self.load_model()
+        # Cache weekly data for live features
+        self._weekly_df = None
+        # Try to load quantile models after base model to keep feature order ready
+        self._load_quantile_models()
+    
+    def _load_latest_metadata_features(self, model_dir: str):
+        """Load feature order from the latest metadata JSON if available."""
+        try:
+            meta_files = sorted(glob.glob(os.path.join(model_dir, 'proper_model_metadata_*.json')))
+            if not meta_files:
+                return False
+            meta_path = meta_files[-1]
+            with open(meta_path, 'r') as f:
+                meta = json.load(f)
+            feats = meta.get('features')
+            if isinstance(feats, list) and len(feats) > 0:
+                self.model_features = list(feats)
+                print(f"🔧 Loaded feature order from metadata: {meta_path} ({len(self.model_features)} features)")
+                return True
+            return False
+        except Exception as e:
+            print(f"⚠️ Could not load metadata features: {e}")
+            return False
     
     def load_model(self):
         """Load the proper CatBoost model"""
         try:
+            # Import joblib lazily to avoid import-time failures when the package isn't installed
+            try:
+                import joblib  # type: ignore
+            except ImportError:
+                print("❌ joblib not installed; AI model disabled. Ensure joblib is in your environment (pip install -r requirements.txt).")
+                self.model = None
+                return False
             # Prefer explicit env override if provided
             env_model_path = os.getenv('PROPER_MODEL_PATH')
             if env_model_path and os.path.exists(env_model_path):
@@ -69,9 +126,9 @@ class ProperModelAdapter:
                 return False
             self.model = joblib.load(chosen_path)
             print(f"✅ Loaded proper AI model from: {chosen_path}")
-            meta_path = os.path.join(os.path.dirname(chosen_path), 'proper_model_metadata_20250805_084024.json')
-            if os.path.exists(meta_path):
-                print(f"ℹ️ Found matching metadata file: {meta_path}")
+            model_dir = os.path.dirname(chosen_path)
+            # Load feature order from latest metadata if possible
+            self._load_latest_metadata_features(model_dir)
             # Sync feature order from model if available
             try:
                 model_feature_names = getattr(self.model, 'feature_names_', None)
@@ -85,6 +142,48 @@ class ProperModelAdapter:
             print(f"❌ Error loading proper model: {e}")
             self.model = None
             return False
+
+    def _load_quantile_models(self):
+        """Attempt to load optional quantile models (q05/q50/q95) from common locations."""
+        # Import joblib lazily
+        try:
+            import joblib  # type: ignore
+        except Exception:
+            print("⚠️ joblib not available; skipping quantile models load")
+            return False
+
+        tags = ["q05", "q50", "q95"]
+        candidates_per_tag = {
+            tag: [
+                f"models/proper_fantasy_model_{tag}.pkl",
+                f"../models/proper_fantasy_model_{tag}.pkl",
+                f"functions/models/proper_fantasy_model_{tag}.pkl",
+                f"deploy_bundle/models/proper_fantasy_model_{tag}.pkl",
+                f"deploy_bundle/functions/models/proper_fantasy_model_{tag}.pkl",
+            ]
+            for tag in tags
+        }
+
+        loaded_any = False
+        for tag, paths in candidates_per_tag.items():
+            model_loaded = False
+            # Allow environment variable override, e.g., PROPER_Q50_MODEL_PATH
+            env_key = f"PROPER_{tag.upper()}_MODEL_PATH"
+            env_path = os.getenv(env_key)
+            try_paths = [env_path] + paths if env_path else paths
+            for p in try_paths:
+                if p and os.path.exists(p):
+                    try:
+                        self.quantile_models[tag] = joblib.load(p)
+                        print(f"✅ Loaded quantile model {tag} from: {p}")
+                        model_loaded = True
+                        loaded_any = True
+                        break
+                    except Exception as e:
+                        print(f"⚠️ Failed to load quantile model {tag} from {p}: {e}")
+            if not model_loaded:
+                self.quantile_models[tag] = None
+        return loaded_any
     
     def create_mock_historical_features(self, players_df):
         """
@@ -177,28 +276,82 @@ class ProperModelAdapter:
         
         return features_df
     
+    def load_weekly_data(self):
+        """Load combined weekly data for live feature building."""
+        if self._weekly_df is not None:
+            return self._weekly_df
+        candidates = [
+            'data/nflverse/combined_weekly_2022_2024.csv',
+            os.path.join(ROOT_DIR, 'data', 'nflverse', 'combined_weekly_2022_2024.csv'),
+        ]
+        for p in candidates:
+            if os.path.exists(p):
+                try:
+                    self._weekly_df = pd.read_csv(p)
+                    print(f"📚 Loaded weekly data for live features: {p} ({len(self._weekly_df)} rows)")
+                    return self._weekly_df
+                except Exception as e:
+                    print(f"⚠️ Failed to read weekly data {p}: {e}")
+        print("⚠️ Weekly data not found; will fallback to mock features")
+        self._weekly_df = pd.DataFrame()
+        return self._weekly_df
+
     def get_ai_predictions(self, players_df):
         """Get AI predictions for a list of players"""
-        if self.model is None:
-            print("❌ Model not loaded, cannot make predictions")
+        if self.model is None and self.quantile_models.get("q50") is None:
+            print("❌ No model available (neither point-estimate nor quantile p50). Cannot make predictions")
             return None
         
         try:
-            # Create features
-            features_df = self.create_mock_historical_features(players_df)
-            
-            # Ensure all required features are present
-            for feature in self.model_features:
+            # Prefer real historical features if builder and weekly data are available
+            features_df = None
+            if build_live_features_for_players is not None:
+                weekly_df = self.load_weekly_data()
+                if weekly_df is not None and not weekly_df.empty:
+                    try:
+                        features_df = build_live_features_for_players(players_df, weekly_df)
+                        print(f"✅ Built real live features for {len(features_df)} players")
+                    except Exception as e:
+                        print(f"⚠️ Live feature build failed, will fallback to mock: {e}")
+                        features_df = None
+            if features_df is None:
+                features_df = self.create_mock_historical_features(players_df)
+                print(f"ℹ️ Using mock features for {len(features_df)} players")
+
+            # Ensure all required features are present and ordered
+            feature_order = self.model_features if self.model_features else list(REQUIRED_FEATURES)
+            for feature in feature_order:
                 if feature not in features_df.columns:
                     features_df[feature] = 0
-            
-            # Reindex to exact model feature order to satisfy CatBoost
-            X = features_df[self.model_features]
-            predictions = self.model.predict(X)
+            X = features_df[feature_order]
+            # Point estimate from base model if available; else fallback to p50 quantile
+            if self.model is not None:
+                predictions = self.model.predict(X)
+            else:
+                predictions = self.quantile_models["q50"].predict(X) if self.quantile_models.get("q50") is not None else np.zeros(len(X))
             
             # Add predictions to the dataframe
             result_df = players_df.copy()
             result_df['ai_prediction'] = predictions
+            
+            # Optional quantile predictions
+            try:
+                q05_model = self.quantile_models.get("q05")
+                q50_model = self.quantile_models.get("q50")
+                q95_model = self.quantile_models.get("q95")
+                if q05_model is not None:
+                    result_df['ai_p5'] = q05_model.predict(X)
+                if q50_model is not None:
+                    result_df['ai_p50'] = q50_model.predict(X)
+                if q95_model is not None:
+                    result_df['ai_p95'] = q95_model.predict(X)
+                # Convenience bounds if both are present
+                if 'ai_p5' in result_df.columns and 'ai_p95' in result_df.columns:
+                    result_df['ai_lower'] = result_df['ai_p5']
+                    result_df['ai_upper'] = result_df['ai_p95']
+            except Exception as _qe:
+                # Do not fail predictions if quantiles error out
+                print(f"⚠️ Quantile prediction step failed: {_qe}")
             
             print(f"✅ Generated AI predictions for {len(result_df)} players")
             return result_df
@@ -209,7 +362,8 @@ class ProperModelAdapter:
     
     def is_available(self):
         """Check if the model is available for predictions"""
-        return self.model is not None
+        # Available if either base model or p50 quantile model exists
+        return (self.model is not None) or (self.quantile_models.get("q50") is not None)
 
 # Global instance
 _adapter = None

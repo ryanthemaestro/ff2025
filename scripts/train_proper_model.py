@@ -106,6 +106,58 @@ class ProperCatBoostTrainer:
         
         return data
     
+    def _time_series_cv(self, X, y):
+        """Lightweight time-series CV to choose bootstrap_type and l2."""
+        print("🧪 Running time-series CV (reduced iterations) ...")
+        # Sort by season then week
+        order = np.lexsort((X['week'].values, X['season_2022'].values + 2*X['season_2023'].values + 3*X['season_2024'].values))
+        X_sorted = X.iloc[order].reset_index(drop=True)
+        y_sorted = y.iloc[order].reset_index(drop=True)
+        
+        # 5 folds expanding window
+        n = len(X_sorted)
+        folds = []
+        for k in range(5):
+            split = int((k + 1) * n / 6)  # 1/6, 2/6, ..., 5/6 as train cutoff
+            if split < n - 500:  # ensure some validation
+                folds.append((slice(0, split), slice(split, min(n, split + 500))))
+        
+        param_grid = [
+            {'bootstrap_type': 'Bernoulli', 'l2_leaf_reg': 8},
+            {'bootstrap_type': 'Bernoulli', 'l2_leaf_reg': 10},
+            {'bootstrap_type': 'MVS', 'l2_leaf_reg': 10},
+            {'bootstrap_type': 'MVS', 'l2_leaf_reg': 12},
+        ]
+        best = None
+        for params in param_grid:
+            r2s = []
+            for tr, va in folds:
+                X_tr, y_tr = X_sorted.iloc[tr], y_sorted.iloc[tr]
+                X_va, y_va = X_sorted.iloc[va], y_sorted.iloc[va]
+                model = CatBoostRegressor(
+                    iterations=800,
+                    learning_rate=0.05,
+                    depth=5,
+                    l2_leaf_reg=params['l2_leaf_reg'],
+                    bootstrap_type=params['bootstrap_type'],
+                    subsample=0.8,
+                    rsm=0.8,
+                    random_strength=1.0,
+                    od_type='Iter',
+                    od_wait=50,
+                    random_seed=42,
+                    verbose=False
+                )
+                model.fit(X_tr, y_tr)
+                pred = model.predict(X_va)
+                r2s.append(r2_score(y_va, pred))
+            mean_r2 = float(np.mean(r2s)) if r2s else -1e9
+            print(f"   CV params {params} -> mean R²: {mean_r2:.3f}")
+            if (best is None) or (mean_r2 > best['r2']):
+                best = {'params': params, 'r2': mean_r2}
+        print(f"🏆 Best CV params: {best['params']} with mean R² {best['r2']:.3f}")
+        return best['params']
+    
     def train_model(self, training_data):
         """Train the CatBoost model"""
         print("🤖 TRAINING CATBOOST MODEL ON PROPER DATA...")
@@ -130,13 +182,16 @@ class ProperCatBoostTrainer:
         
         print(f"🔄 Train set: {len(X_train)}, Test set: {len(X_test)}")
         
-        # Train CatBoost model with proper hyperparameters
+        # Tune a couple of robust params with time-series CV
+        best_params = self._time_series_cv(X, y)
+        
+        # Train CatBoost model with tuned hyperparameters
         self.model = CatBoostRegressor(
             iterations=2000,
             learning_rate=0.05,
             depth=5,
-            l2_leaf_reg=10,
-            bootstrap_type='Bernoulli',
+            l2_leaf_reg=best_params['l2_leaf_reg'],
+            bootstrap_type=best_params['bootstrap_type'],
             subsample=0.8,
             rsm=0.8,
             random_strength=1.0,
@@ -146,7 +201,7 @@ class ProperCatBoostTrainer:
             verbose=False
         )
         
-        print(f"🔄 Training CatBoost model...")
+        print(f"🔄 Training CatBoost model with {best_params} ...")
         self.model.fit(X_train, y_train)
         print(f"✅ Model training complete!")
         
@@ -181,7 +236,8 @@ class ProperCatBoostTrainer:
             'test_mae': test_mae,
             'train_r2': train_r2,
             'test_r2': test_r2,
-            'feature_importance': importance_df.to_dict('records')
+            'feature_importance': importance_df.to_dict('records'),
+            'best_params': best_params
         }
         
         return metrics
@@ -237,7 +293,7 @@ class ProperCatBoostTrainer:
         # Step 4: Save model
         model_path, metadata_path = self.save_model(metrics)
         
-        print(f"\n�� PROPER MODEL TRAINING COMPLETE!")
+        print(f"\n PROPER MODEL TRAINING COMPLETE!")
         print(f"✅ Model trained on leak-free data")
         print(f"✅ Test accuracy: {metrics['test_r2']:.3f} R² score")
         print(f"✅ Test error: {metrics['test_mae']:.2f} fantasy points MAE")

@@ -22,9 +22,9 @@ export MPLBACKEND=Agg
 export QT_QPA_PLATFORM=offscreen
 export DISPLAY=""
 
-# Install packages if needed
-echo "📦 Checking dependencies..."
-pip install --quiet flask pandas numpy requests >/dev/null 2>&1 || echo "Dependencies already installed"
+# Install packages from requirements to ensure all deps (incl. joblib) are present
+echo "📦 Installing dependencies from requirements.txt..."
+pip install -r requirements.txt
 
 echo "🚀 Starting Flask server..."
 echo "📍 Once started, open: http://localhost:5000"

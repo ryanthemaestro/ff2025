@@ -967,13 +967,27 @@
                         var position = p.position || 'UNKNOWN';
                         var score = p.optimized_score || p.score || 0;
                         var scoreDisplay = (typeof score === 'number' && !isNaN(score)) ? score.toFixed(1) : 'N/A';
+                        // Quantiles
+                        var ai50 = (p.ai_p50 != null && !isNaN(p.ai_p50)) ? parseFloat(p.ai_p50).toFixed(1) : null;
+                        var ai5  = (p.ai_lower != null && !isNaN(p.ai_lower)) ? parseFloat(p.ai_lower).toFixed(1)
+                                   : ((p.ai_p5 != null && !isNaN(p.ai_p5)) ? parseFloat(p.ai_p5).toFixed(1) : null);
+                        var ai95 = (p.ai_upper != null && !isNaN(p.ai_upper)) ? parseFloat(p.ai_upper).toFixed(1)
+                                   : ((p.ai_p95 != null && !isNaN(p.ai_p95)) ? parseFloat(p.ai_p95).toFixed(1) : null);
+                        var aiDisplay = '';
+                        if (ai50 !== null || (ai5 !== null && ai95 !== null)) {
+                            aiDisplay = 'AI: ' + (ai50 !== null ? ai50 : '—') + ((ai5 !== null && ai95 !== null) ? ' (' + ai5 + '–' + ai95 + ')' : '');
+                        } else if (p.ai_score != null && !isNaN(p.ai_score)) {
+                            aiDisplay = 'AI: ' + parseFloat(p.ai_score).toFixed(1);
+                        }
                         
                         html += '<div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 12px; background: rgba(255,255,255,0.1); border-radius: 8px; border-left: 4px solid #4ade80;">';
                         html += '<div>';
                         html += '<strong>' + name + '</strong>';
                         html += '<span style="margin-left: 8px; opacity: 0.9;">(' + position + ')</span>';
                         html += '</div>';
-                        html += '<div style="text-align: right; font-size: 14px; opacity: 0.9;">Score: ' + scoreDisplay + '</div>';
+                        html += '<div style="text-align: right; font-size: 14px; opacity: 0.9;">';
+                        html += 'Score: ' + scoreDisplay + (aiDisplay ? '<br>' + aiDisplay : '');
+                        html += '</div>';
                         html += '</div>';
                     });
                     
@@ -1387,6 +1401,19 @@
                 var injuryIcon = p.injury_icon || '';
                 var injuryStatus = p.injury_status || '';
                 var injuryDesc = p.injury_description || '';
+                // Quantiles (optional)
+                var ai50 = (p.ai_p50 != null && !isNaN(p.ai_p50)) ? parseFloat(p.ai_p50).toFixed(1) : null;
+                var ai5  = (p.ai_lower != null && !isNaN(p.ai_lower)) ? parseFloat(p.ai_lower).toFixed(1)
+                           : ((p.ai_p5 != null && !isNaN(p.ai_p5)) ? parseFloat(p.ai_p5).toFixed(1) : null);
+                var ai95 = (p.ai_upper != null && !isNaN(p.ai_upper)) ? parseFloat(p.ai_upper).toFixed(1)
+                           : ((p.ai_p95 != null && !isNaN(p.ai_p95)) ? parseFloat(p.ai_p95).toFixed(1) : null);
+                var aiBlock = '';
+                if (ai50 !== null || (ai5 !== null && ai95 !== null) || (p.ai_score != null && !isNaN(p.ai_score))) {
+                    var aiText = (ai50 !== null || (ai5 !== null && ai95 !== null))
+                        ? ((ai50 !== null ? ai50 : '—') + ((ai5 !== null && ai95 !== null) ? ' (' + ai5 + '–' + ai95 + ')' : ''))
+                        : parseFloat(p.ai_score).toFixed(1);
+                    aiBlock = ' | AI: ' + aiText;
+                }
                 
                 html += '<li data-name="' + name + '" data-position="' + position + '" data-rookie="' + isRookieFlag + '">';
                 html += '<div class="player-info">';
@@ -1397,7 +1424,7 @@
                 html += '</div>';
                 html += '<div class="player-details">';
                 html += '<span class="position-badge position-' + position.substring(0,2) + '">' + position + '</span>';
-                html += 'ADP: ' + adpDisplay + ' | Proj: ' + projDisplay + ' pts | Bye: ' + byeDisplay;
+                html += 'ADP: ' + adpDisplay + ' | Proj: ' + projDisplay + ' pts | Bye: ' + byeDisplay + aiBlock;
                 if (injuryStatus && injuryStatus !== 'null') {
                     html += ' | <span class="injury-status">' + injuryStatus + '</span>';
                 }

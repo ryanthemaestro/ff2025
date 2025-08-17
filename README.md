@@ -12,35 +12,30 @@ A smart fantasy football draft assistant with AI-powered player recommendations.
 
 ## Tech Stack
 
-- **Backend**: Python Flask with Netlify Functions
+- **Backend**: Python Flask (local app)
 - **Frontend**: HTML/CSS/JavaScript with jQuery
 - **AI Model**: CatBoost (scikit-learn compatible)
 - **Data Sources**: FantasyPros ADP Rankings, NFLverse historical data
 
-## Deployment
+## Running Locally
 
-This app is deployed on Netlify using serverless functions.
+1. Create and activate a virtual environment (recommended):
+   ```bash
+   python3 -m venv venv
+   source venv/bin/activate
+   ```
 
-### Local Development
-
-1. Install dependencies:
+2. Install dependencies:
    ```bash
    pip install -r requirements.txt
    ```
 
-2. Run the Flask app:
+3. Start the app:
    ```bash
    python scripts/draft_ui.py
    ```
 
-3. Open http://localhost:5000
-
-### Netlify Deployment
-
-The app is configured for automatic deployment on Netlify with:
-- Serverless functions in `/functions/`
-- Static assets in `/static/` 
-- Build configuration in `netlify.toml`
+4. Open http://localhost:5000
 
 ## Data Sources
 
