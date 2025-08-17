@@ -312,13 +312,21 @@ def load_state():
 
 def save_state(available_df, our_team, drafted_by_others, team_needs):
     """Save draft state to file"""
-    state = {
+    # Preserve existing fields like roster_config, num_teams, draft_strategy, etc.
+    try:
+        with open(STATE_FILE, 'r') as f:
+            prev = json.load(f)
+    except Exception:
+        prev = {}
+
+    state = prev.copy()
+    state.update({
         'available_df': available_df.to_dict('records'),
         'our_team': our_team,
         'drafted_by_others': drafted_by_others,
         'team_needs': team_needs
-    }
-    
+    })
+
     with open(STATE_FILE, 'w') as f:
         json.dump(state, f, indent=2)
 
@@ -511,6 +519,15 @@ def suggest():
                 diag['model_file_exists'] = os.path.exists(model_path)
                 if diag['model_file_exists']:
                     diag['model_file_size'] = os.path.getsize(model_path)
+                # Quantile model presence
+                q05_path = 'models/proper_fantasy_model_q05.pkl'
+                q50_path = 'models/proper_fantasy_model_q50.pkl'
+                q95_path = 'models/proper_fantasy_model_q95.pkl'
+                diag['quantile_files'] = {
+                    'q05': os.path.exists(q05_path),
+                    'q50': os.path.exists(q50_path),
+                    'q95': os.path.exists(q95_path),
+                }
             except Exception:
                 pass
 
@@ -520,12 +537,18 @@ def suggest():
                 ai_results = predict_players(available_df)
                 
                 if ai_results is not None:
+                    # Prefer median if available for point estimate
+                    ai_results = ai_results.copy()
+                    if 'ai_p50' in ai_results.columns:
+                        ai_results['ai_point'] = ai_results['ai_p50']
+                    else:
+                        ai_results['ai_point'] = ai_results.get('ai_prediction', 0.0)
                     # Apply scarcity boost to AI predictions
                     enhanced_suggestions = apply_simple_scarcity_boost(ai_results, our_team, current_round)
                     
                     # Calculate boosted score using AI predictions
                     enhanced_suggestions['boosted_score'] = (
-                        enhanced_suggestions['ai_prediction'] * enhanced_suggestions['scarcity_boost']
+                        enhanced_suggestions['ai_point'].astype(float) * enhanced_suggestions['scarcity_boost'].astype(float)
                     )
                     
                     # Sort by boosted AI scores
@@ -851,9 +874,11 @@ def suggest():
         # Encourage slight divergence from ADP when AI strongly disagrees (Rounds 1-2)
         try:
             if current_round <= 2 and 'adp_rank' in enhanced_suggestions.columns:
-                if 'ai_prediction' in enhanced_suggestions.columns:
+                # Use ai_point (median) if present, else fall back to ai_prediction
+                if ('ai_point' in enhanced_suggestions.columns) or ('ai_prediction' in enhanced_suggestions.columns):
                     enhanced_suggestions = enhanced_suggestions.copy()
-                    enhanced_suggestions['ai_rank'] = enhanced_suggestions['ai_prediction'].rank(ascending=False, method='min')
+                    ai_for_rank = enhanced_suggestions.get('ai_point', enhanced_suggestions.get('ai_prediction', 0.0))
+                    enhanced_suggestions['ai_rank'] = ai_for_rank.rank(ascending=False, method='min')
                     enhanced_suggestions['adp_rank_num'] = pd.to_numeric(enhanced_suggestions['adp_rank'], errors='coerce')
                     n = max(1.0, float(len(enhanced_suggestions)))
                     enhanced_suggestions['rank_delta_norm'] = (
@@ -922,7 +947,7 @@ def suggest():
         for _, suggestion in enhanced_suggestions.head(8).iterrows():  # Top 8 picks
             boosted_score = suggestion.get('boosted_score', suggestion.get('projected_points', 0))
             scarcity_boost = suggestion.get('scarcity_boost', 1.0)
-            ai_score = suggestion.get('ai_prediction', 0)
+            ai_score = suggestion.get('ai_point', suggestion.get('ai_prediction', 0))
             final_score = suggestion.get('final_score', boosted_score)
  
             formatted_suggestions.append({
@@ -934,7 +959,13 @@ def suggest():
                 'team': suggestion.get('team', ''),
                 'optimized_score': float(final_score) if not pd.isna(final_score) else (float(boosted_score) if not pd.isna(boosted_score) else 0.0),
                 'ai_score': float(ai_score) if not pd.isna(ai_score) else 0.0,
-                'scarcity_boost': round(float(scarcity_boost), 2) if not pd.isna(scarcity_boost) else 1.0
+                'scarcity_boost': round(float(scarcity_boost), 2) if not pd.isna(scarcity_boost) else 1.0,
+                # Optional quantile outputs
+                'ai_p5': (float(suggestion['ai_p5']) if ('ai_p5' in suggestion and not pd.isna(suggestion['ai_p5'])) else None),
+                'ai_p50': (float(suggestion['ai_p50']) if ('ai_p50' in suggestion and not pd.isna(suggestion['ai_p50'])) else None),
+                'ai_p95': (float(suggestion['ai_p95']) if ('ai_p95' in suggestion and not pd.isna(suggestion['ai_p95'])) else None),
+                'ai_lower': (float(suggestion['ai_lower']) if ('ai_lower' in suggestion and not pd.isna(suggestion['ai_lower'])) else None),
+                'ai_upper': (float(suggestion['ai_upper']) if ('ai_upper' in suggestion and not pd.isna(suggestion['ai_upper'])) else None)
             })
  
         if debug_mode:
@@ -1012,10 +1043,87 @@ def search():
 
     available_df = df[~df['name'].isin(drafted_names)]
     
-    # Simple name search
+    # Name search among available players
     matches = available_df[available_df['name'].str.contains(query, case=False, na=False)]
-    result = clean_nan_for_json(matches.head(20))
-    return jsonify(result.to_dict('records'))
+    if matches.empty:
+        return jsonify([])
+    top_matches = matches.head(20).copy()
+
+    # Try to enrich with AI predictions and quantiles
+    try:
+        from proper_model_adapter import predict_players, is_model_available
+        if is_model_available():
+            ai_results = predict_players(top_matches)
+            if ai_results is not None and not ai_results.empty:
+                ai_results = ai_results.copy()
+                # Prefer median as point estimate if available
+                if 'ai_p50' in ai_results.columns:
+                    ai_results['ai_point'] = ai_results['ai_p50']
+                else:
+                    ai_results['ai_point'] = ai_results.get('ai_prediction', 0.0)
+
+                formatted = []
+                for _, row in ai_results.iterrows():
+                    ai_p5_val = row.get('ai_p5', None)
+                    ai_p50_val = row.get('ai_p50', None)
+                    ai_p95_val = row.get('ai_p95', None)
+                    ai_lower_val = row.get('ai_lower', None)
+                    ai_upper_val = row.get('ai_upper', None)
+                    ai_point_val = row.get('ai_point', None)
+                    formatted.append({
+                        'name': row.get('name'),
+                        'position': row.get('position'),
+                        'adp_rank': row.get('adp_rank', None),
+                        'projected_points': (
+                            float(row.get('projected_points'))
+                            if (row.get('projected_points') is not None and not pd.isna(row.get('projected_points')))
+                            else 0.0
+                        ),
+                        'bye_week': row.get('bye_week', 'Unknown'),
+                        'team': row.get('team', ''),
+                        'is_rookie': bool(row.get('is_rookie', False)),
+                        'injury_status': row.get('injury_status', None),
+                        'injury_description': row.get('injury_description', ""),
+                        'injury_icon': row.get('injury_icon', ""),
+                        # AI fields
+                        'ai_score': (float(ai_point_val) if (ai_point_val is not None and not pd.isna(ai_point_val)) else 0.0),
+                        'ai_p5': (float(ai_p5_val) if (ai_p5_val is not None and not pd.isna(ai_p5_val)) else None),
+                        'ai_p50': (float(ai_p50_val) if (ai_p50_val is not None and not pd.isna(ai_p50_val)) else None),
+                        'ai_p95': (float(ai_p95_val) if (ai_p95_val is not None and not pd.isna(ai_p95_val)) else None),
+                        'ai_lower': (float(ai_lower_val) if (ai_lower_val is not None and not pd.isna(ai_lower_val)) else None),
+                        'ai_upper': (float(ai_upper_val) if (ai_upper_val is not None and not pd.isna(ai_upper_val)) else None),
+                    })
+                return jsonify(formatted)
+    except Exception as e:
+        print(f"⚠️ AI enrichment in /search failed: {e}")
+
+    # Fallback: return basic info with AI fields absent/defaulted
+    fallback = []
+    for _, row in top_matches.iterrows():
+        fallback.append({
+            'name': row.get('name'),
+            'position': row.get('position'),
+            'adp_rank': row.get('adp_rank', None),
+            'projected_points': (
+                float(row.get('projected_points'))
+                if (row.get('projected_points') is not None and not pd.isna(row.get('projected_points')))
+                else 0.0
+            ),
+            'bye_week': row.get('bye_week', 'Unknown'),
+            'team': row.get('team', ''),
+            'is_rookie': bool(row.get('is_rookie', False)),
+            'injury_status': row.get('injury_status', None),
+            'injury_description': row.get('injury_description', ""),
+            'injury_icon': row.get('injury_icon', ""),
+            # Maintain consistent AI keys for frontend; no model -> 0.0/None
+            'ai_score': 0.0,
+            'ai_p5': None,
+            'ai_p50': None,
+            'ai_p95': None,
+            'ai_lower': None,
+            'ai_upper': None,
+        })
+    return jsonify(fallback)
 
 @app.route('/draft', methods=['POST'])
 def draft():
@@ -1097,24 +1205,15 @@ def mark_taken():
             with open(STATE_FILE, 'r') as f:
                 state = json.load(f)
         else:
-            # This part of the original code was not in the edit_specification,
-            # but it's needed to initialize state if the file doesn't exist.
+            # Initialize state using roster-aware builders when file doesn't exist
+            roster_config = DEFAULT_ROSTER_CONFIG
             state = {
                 'available_df': df.to_json(orient='records'),
-                'our_team': {
-                    'QB': None,
-                    'RB1': None,
-                    'RB2': None,
-                    'WR1': None,
-                    'WR2': None,
-                    'TE': None,
-                    'FLEX': None,
-                    'K': None,
-                    'DST': None,
-                    'Bench': [None] * 6
-                },
+                'our_team': build_team_from_config(roster_config),
                 'drafted_by_others': [],
-                'team_needs': {'QB': 1, 'RB': 2, 'WR': 2, 'TE': 1, 'K': 1, 'DST': 1}
+                'team_needs': build_position_targets_from_config(roster_config),
+                'roster_config': roster_config,
+                'num_teams': roster_config.get('num_teams', 10)
             }
             with open(STATE_FILE, 'w') as f:
                 json.dump(state, f)
@@ -1142,27 +1241,35 @@ def mark_taken():
 def reset_draft():
     """Reset the entire draft"""
     try:
-        # Initialize fresh state
+        # Preserve roster_config/num_teams and rebuild team from config
+        try:
+            with open(STATE_FILE, 'r') as f:
+                prev = json.load(f)
+        except Exception:
+            prev = {}
+        roster_config = prev.get('roster_config', DEFAULT_ROSTER_CONFIG)
+        num_teams = prev.get('num_teams', DEFAULT_ROSTER_CONFIG['num_teams'])
+        draft_strategy = prev.get('draft_strategy', 'balanced')
+
         initial_state = {
             'available_df': df.to_json(orient='records'),
-            'our_team': {
-                'QB': None,
-                'RB1': None,
-                'RB2': None,
-                'WR1': None,
-                'WR2': None,
-                'TE': None,
-                'FLEX': None,
-                'K': None,
-                'DST': None,
-                'Bench': [None] * 6
-            },
+            'our_team': build_team_from_config(roster_config),
             'drafted_by_others': [],
-            'team_needs': {'QB': 1, 'RB': 2, 'WR': 2, 'TE': 1, 'K': 1, 'DST': 1}
+            'team_needs': build_position_targets_from_config(roster_config),
+            'roster_config': roster_config,
+            'num_teams': num_teams,
+            'draft_strategy': draft_strategy
         }
-        
+
         with open(STATE_FILE, 'w') as f:
             json.dump(initial_state, f)
+        try:
+            team_keys = [k for k in initial_state['our_team'].keys() if k != 'Bench']
+            bench_len = len(initial_state['our_team'].get('Bench', []))
+            print(f"🔄 Reset draft with roster_config: {roster_config}")
+            print(f"🧩 Team slots after reset: {team_keys}, Bench={bench_len}")
+        except Exception:
+            pass
         
         return jsonify({'success': True, 'message': 'Draft reset successfully'})
     except Exception as e:
@@ -1186,11 +1293,13 @@ def undo_player():
         player_found = False
         player_data = None
         
-        # Check starting lineup positions
-        for position in ['QB', 'RB1', 'RB2', 'WR1', 'WR2', 'TE', 'FLEX', 'K', 'DST']:
-            if our_team.get(position) and our_team[position].get('name') == player_name:
-                player_data = our_team[position]
-                our_team[position] = None
+        # Check starting lineup positions dynamically based on our_team keys
+        for slot, assigned in our_team.items():
+            if slot == 'Bench':
+                continue
+            if isinstance(assigned, dict) and assigned.get('name') == player_name:
+                player_data = assigned
+                our_team[slot] = None
                 player_found = True
                 break
         
@@ -1229,7 +1338,7 @@ def undo_player():
             
             # Sort by ADP rank to maintain proper order
             if 'adp_rank' in available_df.columns:
-                available_df = available_df.sort_values('adp_rank', ascending=True, na_last=True)
+                available_df = available_df.sort_values('adp_rank', ascending=True, na_position='last')
                 available_df = available_df.reset_index(drop=True)
                 
             print(f"✅ Added {player_name} back to available players pool")
@@ -1251,8 +1360,17 @@ def assign_player_to_lineup(our_team, player_dict, roster_config=None):
     """Assign player to the first available appropriate position based on roster_config."""
     position = player_dict['position']
     slot_map = build_position_slot_map(roster_config or DEFAULT_ROSTER_CONFIG)
+    try:
+        _cfg = roster_config or DEFAULT_ROSTER_CONFIG
+        _cfg_short = {k: _cfg.get(k) for k in ['QB','RB','WR','TE','FLEX','K','DST','Bench','use_positions']}
+        print(f"assign_player_to_lineup: position={position}, roster_cfg={_cfg_short}")
+        print(f"assign_player_to_lineup: candidate_slots={slot_map.get(position, [])}")
+    except Exception:
+        pass
     for slot in slot_map.get(position, []):
-        if our_team.get(slot) is None:
+        # Only assign to slots that actually exist in our_team to avoid
+        # reintroducing removed positions (e.g., FLEX/TE) via assignment.
+        if slot in our_team and our_team.get(slot) is None:
             our_team[slot] = player_dict
             return slot
     
@@ -1306,6 +1424,13 @@ def league_settings_local():
             state['drafted_by_others'] = []
         with open(STATE_FILE, 'w') as f:
             json.dump(state, f)
+        try:
+            team_keys = [k for k in state['our_team'].keys() if k != 'Bench']
+            bench_len = len(state['our_team'].get('Bench', []))
+            print(f"🛠️ Updated roster_config via /league_settings: {new_cfg}, num_teams={num_teams}")
+            print(f"🧩 Team slots: {team_keys}, Bench={bench_len}")
+        except Exception:
+            pass
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'success': False, 'error': str(e)})

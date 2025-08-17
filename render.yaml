@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: ff2025
+    env: python
+    region: oregon
+    autoDeploy: true
+    buildCommand: |
+      pip install -r requirements.txt
+    startCommand: |
+      gunicorn wsgi:app --workers 2 --threads 2 --timeout 180 --bind 0.0.0.0:$PORT
+    envVars:
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: MPLBACKEND
+        value: Agg
+      - key: QT_QPA_PLATFORM
+        value: offscreen
+      - key: DISPLAY
+        value: ""

@@ -1,0 +1,60 @@
+{
+  "timestamp": "20250815_170040",
+  "quantiles": [
+    5,
+    50,
+    95
+  ],
+  "feature_names": [
+    "hist_games_played",
+    "hist_avg_passing_yards",
+    "hist_avg_passing_tds",
+    "hist_avg_interceptions",
+    "hist_avg_rushing_yards",
+    "hist_avg_rushing_tds",
+    "hist_avg_receiving_yards",
+    "hist_avg_receiving_tds",
+    "hist_avg_receptions",
+    "hist_avg_targets",
+    "hist_avg_carries",
+    "hist_std_fantasy_points",
+    "hist_max_fantasy_points",
+    "hist_min_fantasy_points",
+    "recent_avg_fantasy_points",
+    "recent_vs_season_trend",
+    "recent5_avg_fantasy_points",
+    "recent5_std_fantasy_points",
+    "weighted_avg_fantasy_points",
+    "eff_yards_per_target",
+    "eff_yards_per_carry",
+    "rate_receiving_td",
+    "rate_rushing_td",
+    "rate_pass_td_to_int",
+    "is_qb",
+    "is_rb",
+    "is_wr",
+    "is_te",
+    "season_2022",
+    "season_2023",
+    "season_2024",
+    "week",
+    "early_season",
+    "mid_season",
+    "late_season"
+  ],
+  "results": {
+    "0.05": {
+      "pinball_loss": 0.43375857559480113,
+      "n_test": 2708
+    },
+    "0.5": {
+      "pinball_loss": 2.3963681240110515,
+      "n_test": 2708
+    },
+    "0.95": {
+      "pinball_loss": 0.8519987067777002,
+      "n_test": 2708
+    }
+  },
+  "source_training_data": "proper_training_data_20250815_151158.csv"
+}
