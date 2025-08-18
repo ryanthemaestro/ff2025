@@ -9,6 +9,9 @@ from injury_tracker import get_current_injury_data, add_injury_status_to_datafra
 
 app = Flask(__name__, template_folder='../templates')
 
+# Suggestion mode: 'heuristic' (default) or 'raw'/'model_only' to return model-only ranking
+AI_SUGGEST_MODE = os.getenv('AI_SUGGEST_MODE', 'heuristic').lower()
+
 # Constants
 STATE_FILE = 'draft_state.json'
 
@@ -359,6 +362,10 @@ def suggest():
     try:
         debug_mode = request.args.get('diag') == 'true'
         diag = {}
+        mode_arg = (request.args.get('mode') or '').lower()
+        raw_mode = (mode_arg in ('raw', 'model', 'model_only', 'ai')) or (AI_SUGGEST_MODE in ('raw','model','model_only','ai'))
+        if debug_mode:
+            diag['mode'] = 'raw' if raw_mode else 'heuristic'
         # Check for filtering parameters
         position_filter = request.args.get('position')
         all_available = request.args.get('all_available') == 'true'
@@ -543,6 +550,39 @@ def suggest():
                         ai_results['ai_point'] = ai_results['ai_p50']
                     else:
                         ai_results['ai_point'] = ai_results.get('ai_prediction', 0.0)
+                    # Raw/model-only mode: return pure model ranking, no boosts/heuristics
+                    if raw_mode:
+                        print("🧪 Model-only mode active: returning raw AI ranking (no boosts).")
+                        sorted_ai = ai_results.sort_values('ai_point', ascending=False)
+                        top_ai = sorted_ai.head(8)
+                        formatted = []
+                        for _, suggestion in top_ai.iterrows():
+                            ai_p5_val = suggestion.get('ai_p5', None)
+                            ai_p50_val = suggestion.get('ai_p50', None)
+                            ai_p95_val = suggestion.get('ai_p95', None)
+                            ai_lower_val = suggestion.get('ai_lower', None)
+                            ai_upper_val = suggestion.get('ai_upper', None)
+                            ai_point_val = suggestion.get('ai_point', None)
+                            formatted.append({
+                                'name': suggestion.get('name'),
+                                'position': suggestion.get('position'),
+                                'adp_rank': suggestion.get('adp_rank', None),
+                                'projected_points': float(suggestion.get('projected_points')) if (suggestion.get('projected_points') is not None and not pd.isna(suggestion.get('projected_points'))) else 0.0,
+                                'bye_week': suggestion.get('bye_week', 'Unknown'),
+                                'team': suggestion.get('team', ''),
+                                'optimized_score': float(ai_point_val) if (ai_point_val is not None and not pd.isna(ai_point_val)) else 0.0,
+                                'ai_score': float(ai_point_val) if (ai_point_val is not None and not pd.isna(ai_point_val)) else 0.0,
+                                'scarcity_boost': 1.0,
+                                'ai_p5': (float(ai_p5_val) if (ai_p5_val is not None and not pd.isna(ai_p5_val)) else None),
+                                'ai_p50': (float(ai_p50_val) if (ai_p50_val is not None and not pd.isna(ai_p50_val)) else None),
+                                'ai_p95': (float(ai_p95_val) if (ai_p95_val is not None and not pd.isna(ai_p95_val)) else None),
+                                'ai_lower': (float(ai_lower_val) if (ai_lower_val is not None and not pd.isna(ai_lower_val)) else None),
+                                'ai_upper': (float(ai_upper_val) if (ai_upper_val is not None and not pd.isna(ai_upper_val)) else None),
+                            })
+                        diag['used'] = 'MODEL_ONLY'
+                        if debug_mode:
+                            return jsonify({'diag': diag, 'suggestions': formatted})
+                        return jsonify(formatted)
                     # Apply scarcity boost to AI predictions
                     enhanced_suggestions = apply_simple_scarcity_boost(ai_results, our_team, current_round)
                     
@@ -563,7 +603,33 @@ def suggest():
                     )
                     enhanced_suggestions = enhanced_suggestions.sort_values('boosted_score', ascending=False)
             else:
-                print("❌ Proper AI model not available, using scarcity-based sorting")
+                print("❌ Proper AI model not available.")
+                if raw_mode:
+                    diag['used'] = 'RAW_NO_MODEL'
+                    fallback_df = available_df.sort_values('adp_rank', ascending=True, na_position='last') if 'adp_rank' in available_df.columns else available_df
+                    top_df = fallback_df.head(8)
+                    formatted = []
+                    for _, row in top_df.iterrows():
+                        formatted.append({
+                            'name': row.get('name'),
+                            'position': row.get('position'),
+                            'adp_rank': row.get('adp_rank', None),
+                            'projected_points': float(row.get('projected_points')) if (row.get('projected_points') is not None and not pd.isna(row.get('projected_points'))) else 0.0,
+                            'bye_week': row.get('bye_week', 'Unknown'),
+                            'team': row.get('team', ''),
+                            'optimized_score': float(row.get('projected_points')) if (row.get('projected_points') is not None and not pd.isna(row.get('projected_points'))) else 0.0,
+                            'ai_score': 0.0,
+                            'scarcity_boost': 1.0,
+                            'ai_p5': None,
+                            'ai_p50': None,
+                            'ai_p95': None,
+                            'ai_lower': None,
+                            'ai_upper': None,
+                        })
+                    if debug_mode:
+                        return jsonify({'diag': diag, 'suggestions': formatted})
+                    return jsonify(formatted)
+                print("Using scarcity-based sorting")
                 diag['used'] = 'SCARCITY_NO_MODEL'
                 enhanced_suggestions = apply_simple_scarcity_boost(available_df, our_team, current_round)
                 enhanced_suggestions['boosted_score'] = (

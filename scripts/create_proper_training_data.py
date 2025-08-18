@@ -45,8 +45,8 @@ class ProperTrainingDataCreator:
     def create_historical_features(self, player_data):
         """Create features from historical performance (past 4+ games)"""
         
-        # Sort by week to ensure proper chronological order
-        player_data = player_data.sort_values('week')
+        # Sort by season and week to ensure proper chronological order across seasons
+        player_data = player_data.sort_values(['season', 'week'])
         
         features_list = []
         

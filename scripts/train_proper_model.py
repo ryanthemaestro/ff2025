@@ -19,6 +19,7 @@ class ProperCatBoostTrainer:
     def __init__(self):
         self.model = None
         self.feature_names = []
+        self.training_sample_count = 0
         
     def load_proper_training_data(self):
         """Load the proper training data with no leakage"""
@@ -106,11 +107,15 @@ class ProperCatBoostTrainer:
         
         return data
     
-    def _time_series_cv(self, X, y):
-        """Lightweight time-series CV to choose bootstrap_type and l2."""
-        print("🧪 Running time-series CV (reduced iterations) ...")
-        # Sort by season then week
-        order = np.lexsort((X['week'].values, X['season_2022'].values + 2*X['season_2023'].values + 3*X['season_2024'].values))
+    def _time_series_cv(self, df_time, X, y):
+        """Lightweight time-series CV to choose bootstrap_type and l2 using chronological order.
+        df_time must contain numeric 'season' and 'week' columns aligned to X/y indices.
+        """
+        print("🧪 Running time-series CV (reduced iterations, time-aware) ...")
+        # Ensure numeric season/week
+        seasons = pd.to_numeric(df_time['season'], errors='coerce').fillna(0).astype(int).values
+        weeks = pd.to_numeric(df_time['week'], errors='coerce').fillna(1).astype(int).values
+        order = np.lexsort((weeks, seasons))
         X_sorted = X.iloc[order].reset_index(drop=True)
         y_sorted = y.iloc[order].reset_index(drop=True)
         
@@ -170,20 +175,29 @@ class ProperCatBoostTrainer:
         mask = ~y.isna()
         X = X[mask]
         y = y[mask]
+        # Track sample count for metadata
+        self.training_sample_count = int(len(X))
         
         print(f"📊 Training samples: {len(X)}")
         print(f"🎯 Target range: {y.min():.1f} to {y.max():.1f} fantasy points")
         print(f"📈 Target mean: {y.mean():.1f} fantasy points")
         
-        # Split data (no stratification for regression)
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=42
-        )
-        
-        print(f"🔄 Train set: {len(X_train)}, Test set: {len(X_test)}")
-        
+        # Chronological split by season/week (last 20% as test)
+        df_time = training_data[['season', 'week']].copy()
+        seasons = pd.to_numeric(df_time['season'], errors='coerce').fillna(0).astype(int).values
+        weeks = pd.to_numeric(df_time['week'], errors='coerce').fillna(1).astype(int).values
+        order = np.lexsort((weeks, seasons))
+        X_sorted = X.iloc[order].reset_index(drop=True)
+        y_sorted = y.iloc[order].reset_index(drop=True)
+        n = len(X_sorted)
+        split = int(n * 0.8)
+        X_train, X_test = X_sorted.iloc[:split], X_sorted.iloc[split:]
+        y_train, y_test = y_sorted.iloc[:split], y_sorted.iloc[split:]
+
+        print(f"🔄 Train set: {len(X_train)}, Test set: {len(X_test)} (time-aware)")
+
         # Tune a couple of robust params with time-series CV
-        best_params = self._time_series_cv(X, y)
+        best_params = self._time_series_cv(df_time.iloc[order].reset_index(drop=True), X_sorted, y_sorted)
         
         # Train CatBoost model with tuned hyperparameters
         self.model = CatBoostRegressor(
@@ -257,7 +271,7 @@ class ProperCatBoostTrainer:
         metadata = {
             'timestamp': timestamp,
             'model_type': 'CatBoost',
-            'training_samples': len(self.feature_names),
+            'training_samples': int(self.training_sample_count),
             'features': self.feature_names,
             'metrics': metrics,
             'target': 'future_fantasy_points_from_historical_avg',
