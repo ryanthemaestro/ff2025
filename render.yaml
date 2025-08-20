@@ -17,3 +17,5 @@ services:
         value: offscreen
       - key: DISPLAY
         value: ""
+      - key: AI_SUGGEST_MODE
+        value: raw
