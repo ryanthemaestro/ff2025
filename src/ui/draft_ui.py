@@ -11,11 +11,14 @@ os.environ['MPLBACKEND'] = 'Agg'
 os.environ['DISPLAY'] = ''
 
 sys.path.insert(0, '../..')
+# Resolve absolute project base directory for reliable file/template paths
+BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..'))
+
 from flask import Flask, render_template, request, jsonify, make_response
 import pandas as pd
 import json
 
-app = Flask(__name__, template_folder='../../templates')
+app = Flask(__name__, template_folder=os.path.join(BASE_DIR, 'templates'))
 
 # Global variables
 df = None
@@ -32,7 +35,8 @@ def load_player_data():
     print("🏈 Loading FantasyPros ADP Rankings...")
     
     try:
-        df = pd.read_csv('../../data/FantasyPros_2025_Overall_ADP_Rankings.csv', on_bad_lines='skip')
+        data_path = os.path.join(BASE_DIR, 'data', 'FantasyPros_2025_Overall_ADP_Rankings.csv')
+        df = pd.read_csv(data_path, on_bad_lines='skip')
         
         # Clean up column names
         df = df.rename(columns={
@@ -69,6 +73,12 @@ def load_player_data():
     except Exception as e:
         print(f"❌ Error loading data: {e}")
         df = pd.DataFrame()
+
+# Eagerly load data at import time (useful for WSGI/gunicorn)
+try:
+    load_player_data()
+except Exception as _e:
+    print(f"⚠️ Deferred data load due to error: {_e}")
 
 def clean_for_json(data):
     """Clean data for JSON serialization"""
@@ -183,6 +193,19 @@ def suggest():
         filtered = available_players.head(20)
     
     cleaned = clean_for_json(filtered)
+    return jsonify(cleaned.to_dict('records'))
+
+@app.route('/search')
+def search():
+    """Search for players by name (case-insensitive substring)"""
+    query = (request.args.get('q') or '').strip()
+    available_players = get_available_players()
+    if query:
+        mask = available_players['name'].str.contains(query, case=False, na=False)
+        results = available_players[mask].head(50)
+    else:
+        results = available_players.head(50)
+    cleaned = clean_for_json(results)
     return jsonify(cleaned.to_dict('records'))
 
 @app.route('/draft', methods=['POST'])

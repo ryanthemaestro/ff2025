@@ -5,7 +5,21 @@ import pandas as pd
 import numpy as np
 import json
 import os
-from injury_tracker import get_current_injury_data, add_injury_status_to_dataframe
+# Robust import for injury_tracker to support both direct script run and package import
+try:
+    from injury_tracker import get_current_injury_data, add_injury_status_to_dataframe
+except Exception:
+    try:
+        from scripts.injury_tracker import get_current_injury_data, add_injury_status_to_dataframe
+    except Exception:
+        def get_current_injury_data():
+            return pd.DataFrame(columns=['full_name', 'report_status', 'report_primary_injury'])
+        def add_injury_status_to_dataframe(player_df, injury_df):
+            player_df = player_df.copy()
+            player_df['injury_status'] = None
+            player_df['injury_description'] = ""
+            player_df['injury_icon'] = ""
+            return player_df
 
 app = Flask(__name__, template_folder='../templates')
 
@@ -369,6 +383,7 @@ def suggest():
         # Check for filtering parameters
         position_filter = request.args.get('position')
         all_available = request.args.get('all_available') == 'true'
+        num_teams = DEFAULT_ROSTER_CONFIG['num_teams']
         # Load draft state
         our_team = []
         opponent_team = []
@@ -380,6 +395,11 @@ def suggest():
                 our_team = state.get('our_team', [])
                 opponent_team = state.get('opponent_team', [])
                 drafted_by_others = state.get('drafted_by_others', [])
+                # Use league size from state when available
+                try:
+                    num_teams = int(state.get('num_teams', num_teams) or num_teams)
+                except Exception:
+                    pass
                 
                 # Collect all drafted player names
                 if isinstance(our_team, dict):
@@ -450,8 +470,8 @@ def suggest():
         
         # Estimate current round
         total_picks = len(drafted_names)
-        current_round = (total_picks // 10) + 1
-        print(f"📊 Estimated draft round: {current_round}")
+        current_round = (total_picks // max(1, int(num_teams))) + 1
+        print(f"📊 Estimated draft round: {current_round} (total_picks={total_picks}, num_teams={num_teams})")
         try:
             with open(STATE_FILE, 'r') as f:
                 _st_strategy = json.load(f)
@@ -461,6 +481,17 @@ def suggest():
         print(f"🎛️ Strategy: {draft_strategy}")
         print("🎯 Returning AI recommendations")
         
+        # Round-aware position gating
+        def allowed_positions_for_round(rnd: int) -> set:
+            if rnd <= 3:
+                return {'WR', 'RB'}
+            elif rnd <= 11:
+                # Allow core positions; avoid K/DST until late
+                return {'WR', 'RB', 'QB', 'TE'}
+            else:
+                return {'WR', 'RB', 'QB', 'TE', 'K', 'DST'}
+        allowed_positions = allowed_positions_for_round(current_round)
+
         # Simple scarcity boost function
         def apply_simple_scarcity_boost(players_df, drafted_team, round_num):
             """Apply a simple position-based scarcity boost"""
@@ -553,7 +584,9 @@ def suggest():
                     # Raw/model-only mode: return pure model ranking, no boosts/heuristics
                     if raw_mode:
                         print("🧪 Model-only mode active: returning raw AI ranking (no boosts).")
-                        sorted_ai = ai_results.sort_values('ai_point', ascending=False)
+                        # Apply strict position gating before ranking
+                        gated_ai = ai_results[ai_results['position'].isin(list(allowed_positions))].copy()
+                        sorted_ai = gated_ai.sort_values('ai_point', ascending=False)
                         top_ai = sorted_ai.head(8)
                         formatted = []
                         for _, suggestion in top_ai.iterrows():
@@ -580,6 +613,8 @@ def suggest():
                                 'ai_upper': (float(ai_upper_val) if (ai_upper_val is not None and not pd.isna(ai_upper_val)) else None),
                             })
                         diag['used'] = 'MODEL_ONLY'
+                        diag['current_round'] = int(current_round)
+                        diag['allowed_positions'] = sorted(list(allowed_positions)) if 'allowed_positions' in locals() else None
                         if debug_mode:
                             return jsonify({'diag': diag, 'suggestions': formatted})
                         return jsonify(formatted)
@@ -607,7 +642,9 @@ def suggest():
                 if raw_mode:
                     diag['used'] = 'RAW_NO_MODEL'
                     fallback_df = available_df.sort_values('adp_rank', ascending=True, na_position='last') if 'adp_rank' in available_df.columns else available_df
-                    top_df = fallback_df.head(8)
+                    # Apply strict position gating before taking top N
+                    gated_fallback = fallback_df[fallback_df['position'].isin(list(allowed_positions))]
+                    top_df = gated_fallback.head(8)
                     formatted = []
                     for _, row in top_df.iterrows():
                         formatted.append({
@@ -627,6 +664,8 @@ def suggest():
                             'ai_upper': None,
                         })
                     if debug_mode:
+                        diag['current_round'] = int(current_round)
+                        diag['allowed_positions'] = sorted(list(allowed_positions)) if 'allowed_positions' in locals() else None
                         return jsonify({'diag': diag, 'suggestions': formatted})
                     return jsonify(formatted)
                 print("Using scarcity-based sorting")
@@ -980,8 +1019,14 @@ def suggest():
         except Exception:
             pass
 
-        # Enforce early-round QB deprioritization and non-QB gating
+        # Enforce round-based position gating and QB deprioritization
         try:
+            # Hard gate by allowed positions for this round
+            if 'position' in enhanced_suggestions.columns:
+                enhanced_suggestions = enhanced_suggestions[enhanced_suggestions['position'].isin(list(allowed_positions))].copy()
+                enhanced_suggestions = enhanced_suggestions.sort_values('final_score', ascending=False)
+
+            # Apply additional soft QB penalty beyond gating
             qb_penalty = 1.0
             if current_round <= 2:
                 qb_penalty = 0.10
@@ -994,17 +1039,12 @@ def suggest():
             else:
                 qb_penalty = 1.0
 
-            if qb_penalty < 1.0:
+            if qb_penalty < 1.0 and 'position' in enhanced_suggestions.columns:
                 mask_qb = enhanced_suggestions['position'] == 'QB'
                 enhanced_suggestions.loc[mask_qb, 'final_score'] = (
                     enhanced_suggestions.loc[mask_qb, 'final_score'].astype(float) * qb_penalty
                 )
                 enhanced_suggestions = enhanced_suggestions.sort_values('final_score', ascending=False)
-
-            if current_round <= 2:
-                non_qb = enhanced_suggestions[enhanced_suggestions['position'] != 'QB']
-                qbs = enhanced_suggestions[enhanced_suggestions['position'] == 'QB']
-                enhanced_suggestions = pd.concat([non_qb, qbs], ignore_index=True)
         except Exception:
             pass
 
@@ -1042,6 +1082,7 @@ def suggest():
                 diag['num_teams'] = _st.get('num_teams', DEFAULT_ROSTER_CONFIG['num_teams']) if 'DEFAULT_ROSTER_CONFIG' in globals() else _st.get('num_teams')
                 diag['blend_alpha'] = float(alpha) if 'alpha' in locals() else None
                 diag['current_round'] = int(current_round)
+                diag['allowed_positions'] = sorted(list(allowed_positions)) if 'allowed_positions' in locals() else None
             except Exception:
                 pass
             return jsonify({'diag': diag, 'suggestions': formatted_suggestions})

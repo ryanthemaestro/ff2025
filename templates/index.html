@@ -945,7 +945,7 @@
         function loadAutoSuggestions() {
             console.log('🚀 Loading auto-suggestions...');
             
-            $.get('/suggest', function(data) {
+            $.get('/suggest?mode=raw', function(data) {
                 console.log('📊 Received suggestion data:', data);
                 
                 if (!data || data.length === 0) {
@@ -1357,7 +1357,7 @@
             if (selectedPosition === 'ROOKIE') {
                 // Fetch rookies via AJAX (since they're excluded from main page)
                 console.log('🆕 ROOKIE FILTER: Fetching rookies via AJAX...');
-                $.get('/suggest?position=ROOKIE', function(data) {
+                $.get('/suggest?position=ROOKIE&mode=raw', function(data) {
                     renderPlayerList(data, 'ROOKIE');
                     console.log('✅ ROOKIE FILTER: Loaded ' + data.length + ' rookies');
                 }).fail(function() {
@@ -1365,7 +1365,7 @@
                 });
             } else {
                 // Fetch veterans via AJAX for ALL or specific position
-                var endpoint = selectedPosition === 'ALL' ? '/suggest?all_available=true' : '/suggest?position=' + selectedPosition;
+                var endpoint = selectedPosition === 'ALL' ? '/suggest?all_available=true&mode=raw' : '/suggest?position=' + selectedPosition + '&mode=raw';
                 console.log('🔄 Fetching ' + selectedPosition + ' players via AJAX...');
                 
                 $.get(endpoint, function(data) {
@@ -1452,9 +1452,9 @@
                 var activePosition = $('.position-filter-btn.active').data('position');
                 if (activePosition) {
                     // Manually reload the active filter without triggering search
-                    var endpoint = activePosition === 'ALL' ? '/suggest?all_available=true' : 
-                                  activePosition === 'ROOKIE' ? '/suggest?position=ROOKIE' :
-                                  '/suggest?position=' + activePosition;
+                    var endpoint = activePosition === 'ALL' ? '/suggest?all_available=true&mode=raw' : 
+                                  activePosition === 'ROOKIE' ? '/suggest?position=ROOKIE&mode=raw' :
+                                  '/suggest?position=' + activePosition + '&mode=raw';
                     $.get(endpoint, function(data) {
                         // Use the same rendering logic as position filter
                         renderPlayerList(data, activePosition);
@@ -1470,7 +1470,7 @@
                 $('.position-filter-btn').removeClass('active');
                 $('#players').html('<li style="text-align: center; color: #718096; padding: 20px;">🔍 Searching...</li>');
                 
-                $.get('/search?q=' + encodeURIComponent(searchTerm), function(data) {
+                $.get('/search?q=' + encodeURIComponent(searchTerm) + '&mode=raw', function(data) {
                     if (data.length === 0) {
                         $('#players').html('<li style="text-align: center; color: #718096; padding: 20px;">🤔 No players found for "' + searchTerm + '"</li>');
                         return;
@@ -1490,7 +1490,7 @@
             $('.position-filter-btn[data-position="ALL"]').addClass('active');
             
             // Load ALL available veterans via custom endpoint
-            $.get('/suggest?all_available=true', function(data) {
+            $.get('/suggest?all_available=true&mode=raw', function(data) {
                 renderPlayerList(data, 'ALL');
                 console.log('✅ Initial page load: ' + data.length + ' veteran players loaded');
             }).fail(function() {
