@@ -1,0 +1,50 @@
+{
+  "timestamp": "20250826_150041",
+  "model_type": "CatBoost",
+  "training_samples": 8904,
+  "test_samples": 4485,
+  "features": [
+    "hist_games_played",
+    "hist_avg_passing_yards",
+    "hist_avg_passing_tds",
+    "hist_avg_interceptions",
+    "hist_avg_rushing_yards",
+    "hist_avg_rushing_tds",
+    "hist_avg_receiving_yards",
+    "hist_avg_receiving_tds",
+    "hist_avg_receptions",
+    "hist_avg_targets",
+    "hist_avg_carries",
+    "hist_std_fantasy_points",
+    "hist_max_fantasy_points",
+    "hist_min_fantasy_points",
+    "recent_avg_fantasy_points",
+    "recent_vs_season_trend",
+    "recent5_avg_fantasy_points",
+    "recent5_std_fantasy_points",
+    "weighted_avg_fantasy_points",
+    "eff_yards_per_target",
+    "eff_yards_per_carry",
+    "rate_receiving_td",
+    "rate_rushing_td",
+    "rate_pass_td_to_int",
+    "week"
+  ],
+  "metrics": {
+    "train_mae": 4.695935906867614,
+    "test_mae": 4.945118976627609,
+    "train_r2": 0.350405314841965,
+    "test_r2": 0.31598330943496733
+  },
+  "params": {
+    "iterations": 2000,
+    "learning_rate": 0.05,
+    "depth": 5,
+    "l2_leaf_reg": 10,
+    "od_wait": 100,
+    "verbose": 100
+  },
+  "weighted_training": true,
+  "temporal_validation": true,
+  "description": "Weighted CatBoost model with temporal validation"
+}

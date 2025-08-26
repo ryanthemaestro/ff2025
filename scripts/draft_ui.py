@@ -1,3 +1,4 @@
+print("🚀 DRAFT_UI.PY LOADED!")
 import sys
 sys.path.insert(0, '.')
 from flask import Flask, render_template, request, jsonify, make_response
@@ -25,6 +26,24 @@ app = Flask(__name__, template_folder='../templates')
 
 # Suggestion mode: 'heuristic' (default) or 'raw'/'model_only' to return model-only ranking
 AI_SUGGEST_MODE = os.getenv('AI_SUGGEST_MODE', 'heuristic').lower()
+
+# Load the AI model adapter
+MODEL_ADAPTER_AVAILABLE = False
+try:
+    # Set the model path before importing - using the new weighted model with sample weights and temporal validation
+    os.environ['PROPER_MODEL_PATH'] = '/home/nar/ff2025/models/weighted_fantasy_model_fixed.pkl'
+
+    # Add scripts directory to path
+    scripts_dir = os.path.join(os.path.dirname(__file__), '.')
+    if scripts_dir not in sys.path:
+        sys.path.insert(0, scripts_dir)
+
+    from proper_model_adapter import predict_players, is_model_available
+    MODEL_ADAPTER_AVAILABLE = True
+    print("✅ Model adapter loaded successfully")
+except Exception as e:
+    print(f"⚠️ Model adapter not available: {e}")
+    MODEL_ADAPTER_AVAILABLE = False
 
 # Constants
 STATE_FILE = 'draft_state.json'
@@ -373,6 +392,7 @@ def index():
 @app.route('/suggest')
 def suggest():
     """Suggest draft picks using our proper AI model"""
+    print("🎯 SUGGEST FUNCTION CALLED!")
     try:
         debug_mode = request.args.get('diag') == 'true'
         diag = {}
@@ -544,16 +564,28 @@ def suggest():
         
         # Use the NEW PROPER AI model (no data leakage)
         try:
-            from proper_model_adapter import predict_players, is_model_available
+            print("🔍 Entering model-based suggestion logic")
+            # Use pre-imported modules to ensure new model path is used
+            if not MODEL_ADAPTER_AVAILABLE:
+                print("❌ Model adapter not available")
+                raise ImportError("Model adapter not available")
+            print("✅ Model adapter is available")
             # Diagnostics for model presence
             try:
-                diag['model_available'] = bool(is_model_available())
-            except Exception:
+                model_available = bool(is_model_available())
+                diag['model_available'] = model_available
+                print(f"🔍 Model available check: {model_available}")
+                print(f"🔍 is_model_available function: {is_model_available}")
+                print(f"🔍 is_model_available() result: {is_model_available()}")
+            except Exception as e:
                 diag['model_available'] = False
+                print(f"❌ Model available check failed: {e}")
+                import traceback
+                traceback.print_exc()
             try:
                 # Use global os import to avoid shadowing errors
                 diag['models_dir'] = sorted(os.listdir('models')) if os.path.isdir('models') else []
-                model_path = 'models/proper_fantasy_model.pkl'
+                model_path = '/home/nar/ff2025/models/leakage_free_model_20250821_084127.pkl'
                 diag['model_file_exists'] = os.path.exists(model_path)
                 if diag['model_file_exists']:
                     diag['model_file_size'] = os.path.getsize(model_path)
@@ -571,16 +603,37 @@ def suggest():
 
             if diag.get('model_available', False):
                 print("🤖 Using PROPER AI model with no data leakage")
+                print(f"📊 Model available: {diag.get('model_available')}")
+                print(f"📁 Model files exist: {diag.get('model_file_exists')}")
+                print(f"📊 Quantile files: {diag.get('quantile_files')}")
                 # Get AI predictions for available players
-                ai_results = predict_players(available_df)
+                print(f"📊 Available DF shape: {available_df.shape}")
+                print(f"📊 Available DF columns: {list(available_df.columns)}")
+                print(f"📊 First player data: {available_df.iloc[0].to_dict() if len(available_df) > 0 else 'No data'}")
+
+                try:
+                    ai_results = predict_players(available_df)
+                except Exception as e:
+                    print(f"❌ Error calling predict_players: {e}")
+                    import traceback
+                    traceback.print_exc()
+                    ai_results = None
                 
                 if ai_results is not None:
                     # Prefer median if available for point estimate
                     ai_results = ai_results.copy()
+                    print(f"🔍 AI results columns: {list(ai_results.columns)}")
+                    print(f"🔍 AI results shape: {ai_results.shape}")
+                    print(f"🔍 First AI prediction: {ai_results['ai_prediction'].iloc[0] if 'ai_prediction' in ai_results.columns else 'N/A'}")
+
                     if 'ai_p50' in ai_results.columns:
                         ai_results['ai_point'] = ai_results['ai_p50']
+                        print("✅ Using ai_p50 for ai_point")
                     else:
-                        ai_results['ai_point'] = ai_results.get('ai_prediction', 0.0)
+                        ai_results['ai_point'] = ai_results['ai_prediction']
+                        print("✅ Using ai_prediction for ai_point")
+
+                    print(f"🔍 First ai_point value: {ai_results['ai_point'].iloc[0] if len(ai_results) > 0 else 'N/A'}")
                     # Raw/model-only mode: return pure model ranking, no boosts/heuristics
                     if raw_mode:
                         print("🧪 Model-only mode active: returning raw AI ranking (no boosts).")
@@ -668,7 +721,7 @@ def suggest():
                         diag['allowed_positions'] = sorted(list(allowed_positions)) if 'allowed_positions' in locals() else None
                         return jsonify({'diag': diag, 'suggestions': formatted})
                     return jsonify(formatted)
-                print("Using scarcity-based sorting")
+                print("🔍 Using scarcity-based sorting (fallback mode)")
                 diag['used'] = 'SCARCITY_NO_MODEL'
                 enhanced_suggestions = apply_simple_scarcity_boost(available_df, our_team, current_round)
                 enhanced_suggestions['boosted_score'] = (
@@ -1158,8 +1211,7 @@ def search():
 
     # Try to enrich with AI predictions and quantiles
     try:
-        from proper_model_adapter import predict_players, is_model_available
-        if is_model_available():
+        if MODEL_ADAPTER_AVAILABLE and is_model_available():
             ai_results = predict_players(top_matches)
             if ai_results is not None and not ai_results.empty:
                 ai_results = ai_results.copy()
@@ -1167,7 +1219,7 @@ def search():
                 if 'ai_p50' in ai_results.columns:
                     ai_results['ai_point'] = ai_results['ai_p50']
                 else:
-                    ai_results['ai_point'] = ai_results.get('ai_prediction', 0.0)
+                    ai_results['ai_point'] = ai_results['ai_prediction']
 
                 formatted = []
                 for _, row in ai_results.iterrows():
@@ -1571,4 +1623,4 @@ def strategy_settings():
         return jsonify({'success': False, 'error': str(e)})
 
 if __name__ == '__main__':
-    app.run(debug=True, host='0.0.0.0', port=5000)
+    app.run(debug=False, host='0.0.0.0', port=5000, use_reloader=False)
