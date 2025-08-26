@@ -31,7 +31,10 @@ AI_SUGGEST_MODE = os.getenv('AI_SUGGEST_MODE', 'heuristic').lower()
 MODEL_ADAPTER_AVAILABLE = False
 try:
     # Set the model path before importing - using the new weighted model with sample weights and temporal validation
-    os.environ['PROPER_MODEL_PATH'] = '/home/nar/ff2025/models/weighted_fantasy_model_fixed.pkl'
+    # Use relative path that works on both local and deployed environments
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    model_path = os.path.join(script_dir, '..', 'models', 'weighted_fantasy_model_fixed.pkl')
+    os.environ['PROPER_MODEL_PATH'] = os.path.abspath(model_path)
 
     # Add scripts directory to path
     scripts_dir = os.path.join(os.path.dirname(__file__), '.')
