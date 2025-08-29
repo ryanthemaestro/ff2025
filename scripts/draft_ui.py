@@ -27,6 +27,55 @@ app = Flask(__name__, template_folder='../templates')
 # Suggestion mode: 'heuristic' (default) or 'raw'/'model_only' to return model-only ranking
 AI_SUGGEST_MODE = os.getenv('AI_SUGGEST_MODE', 'heuristic').lower()
 
+# 🚀 FAST AI CACHE: Store AI predictions to avoid recalculating on every request
+AI_PREDICTIONS_CACHE = None
+CACHE_PLAYER_COUNT = 0
+CACHE_TIMESTAMP = 0
+
+def can_use_ai_cache(current_player_count):
+    """Check if we can use cached AI predictions"""
+    global CACHE_PLAYER_COUNT, CACHE_TIMESTAMP
+    if AI_PREDICTIONS_CACHE is None:
+        return False
+    # Use cache if player count changed by 5 or less (typical draft scenario)
+    if abs(current_player_count - CACHE_PLAYER_COUNT) <= 5:
+        return True
+    return False
+
+def get_cached_ai_predictions(available_df):
+    """Get AI predictions from cache or calculate new ones"""
+    global AI_PREDICTIONS_CACHE, CACHE_PLAYER_COUNT, CACHE_TIMESTAMP
+    current_count = len(available_df)
+
+    if can_use_ai_cache(current_count):
+        print(f"⚡ Using cached AI predictions ({current_count} players)")
+        # Filter cached predictions to match current available players
+        cached_filtered = AI_PREDICTIONS_CACHE[AI_PREDICTIONS_CACHE['name'].isin(available_df['name'])]
+        return cached_filtered
+
+    print(f"🔄 Calculating new AI predictions ({current_count} players)")
+    # Calculate new predictions
+    if not MODEL_ADAPTER_AVAILABLE:
+        return None
+
+    ai_results = predict_players(available_df)
+    if ai_results is not None:
+        # Update cache
+        AI_PREDICTIONS_CACHE = ai_results.copy()
+        CACHE_PLAYER_COUNT = current_count
+        CACHE_TIMESTAMP = pd.Timestamp.now().timestamp()
+        print(f"💾 Cached AI predictions for {current_count} players")
+
+    return ai_results
+
+def clear_ai_cache():
+    """Clear the AI predictions cache"""
+    global AI_PREDICTIONS_CACHE, CACHE_PLAYER_COUNT, CACHE_TIMESTAMP
+    AI_PREDICTIONS_CACHE = None
+    CACHE_PLAYER_COUNT = 0
+    CACHE_TIMESTAMP = 0
+    print("🗑️ AI predictions cache cleared")
+
 # Load the AI model adapter
 MODEL_ADAPTER_AVAILABLE = False
 try:
@@ -615,7 +664,7 @@ def suggest():
                 print(f"📊 First player data: {available_df.iloc[0].to_dict() if len(available_df) > 0 else 'No data'}")
 
                 try:
-                    ai_results = predict_players(available_df)
+                    ai_results = get_cached_ai_predictions(available_df)
                 except Exception as e:
                     print(f"❌ Error calling predict_players: {e}")
                     import traceback
@@ -1403,6 +1452,9 @@ def mark_taken():
 def reset_draft():
     """Reset the entire draft"""
     try:
+        # Clear AI cache first
+        clear_ai_cache()
+
         # Preserve roster_config/num_teams and rebuild team from config
         try:
             with open(STATE_FILE, 'r') as f:
@@ -1432,7 +1484,7 @@ def reset_draft():
             print(f"🧩 Team slots after reset: {team_keys}, Bench={bench_len}")
         except Exception:
             pass
-        
+
         return jsonify({'success': True, 'message': 'Draft reset successfully'})
     except Exception as e:
         return jsonify({'success': False, 'message': f'Error resetting draft: {str(e)}'})
